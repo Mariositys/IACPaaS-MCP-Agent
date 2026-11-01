@@ -37,6 +37,19 @@ API IACPaaS не умеет перечислять ресурсы, поэтом�
 Copy-Item .iacpaas/catalog.example.json .iacpaas/catalog.json
 ```
 
+## Агент
+
+Нужен ключ модели: `OPENAI_API_KEY` или `IACPAAS_AGENT_API_KEY`.
+
+```powershell
+uv run iacpaas-agent "Сколько вершин в ИР «Пример»?"
+```
+
+Модель по умолчанию — `gpt-4o-mini`; изменить можно через `IACPAAS_AGENT_MODEL`,
+свой OpenAI-совместимый endpoint — через `IACPAAS_AGENT_BASE_URL`.
+Ответ агента проходит детерминированную проверку: утверждение без источника
+из результатов тулзов не выдаётся пользователю.
+
 ## Структура
 
 - `src/iacpaas_mcp` — MCP-сервер;

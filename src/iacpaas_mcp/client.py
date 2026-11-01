@@ -6,17 +6,16 @@ from typing import Any
 import httpx2
 from fastmcp.exceptions import ToolError
 
-from .config import Settings
+from .config import API_KEY, BASE_URL, PASSWORD, TIMEOUT, USERNAME
 
 
 class IacpaasClient:
-    def __init__(self, settings: Settings):
-        self._settings = settings
+    def __init__(self):
         self._token: str | None = None
         self._http = httpx2.AsyncClient(
-            base_url=settings.base_url,
+            base_url=BASE_URL,
             headers={"Accept": "application/json"},
-            timeout=settings.timeout,
+            timeout=TIMEOUT,
         )
 
     # ---------- операции платформы ----------
@@ -36,9 +35,9 @@ class IacpaasClient:
             "export-depth": depth,
             "no-blob-data": no_blob_data,
         }
-        data = await self._call("GET", "/api/data/export/user-item", params={
-            k: v for k, v in params.items() if v is not None
-        })
+        data = await self._call(
+            "GET", "/api/data/export/user-item", params={k: v for k, v in params.items() if v is not None}
+        )
         # В OpenAPI ответ - просто object: это либо сам ИР, либо обёртка ExportResult с JSON строкой
         if "result" in data and "success" in data:
             return json.loads(data["result"])
@@ -68,8 +67,8 @@ class IacpaasClient:
     async def delete(
         self, path: str, mode: str, concept_path: str | None, metaconcept_path: str | None
     ) -> dict[str, Any]:
-        body = {"path": path, "mode": mode}
-        if concept_path is not None:
+        body: dict[str, Any] = {"path": path, "mode": mode}
+        if concept_path is not None and metaconcept_path is not None:
             body["concept_path"] = concept_path
             body["metaconcept_path"] = metaconcept_path
         return await self._call("DELETE", "/api/data/delete", json=body)
@@ -83,7 +82,7 @@ class IacpaasClient:
         try:
             resp = await self._request(method, url, **kwargs)
         except httpx2.TimeoutException as e:
-            raise ToolError(f"IACPaaS не ответил за {self._settings.timeout:.0f} с ({url})") from e
+            raise ToolError(f"IACPaaS не ответил за {TIMEOUT} с ({url})") from e
         except httpx2.HTTPError as e:
             raise ToolError(f"IACPaaS недоступен ({url}): {e}") from e
 
@@ -113,17 +112,16 @@ class IacpaasClient:
         return resp
 
     async def _auth(self) -> dict[str, str]:
-        if self._settings.api_key:
-            return {"X-API-KEY": self._settings.api_key}
+        if API_KEY:
+            return {"X-API-KEY": API_KEY}
         if self._token is None:
             self._token = await self._signin()
         return {"Authorization": f"Bearer {self._token}"}
 
     async def _signin(self) -> str:
-        s = self._settings
-        if not (s.username and s.password):
+        if not (USERNAME and PASSWORD):
             raise ToolError("Не задана авторизация: IACPAAS_API_KEY или IACPAAS_USERNAME/IACPAAS_PASSWORD")
-        resp = await self._http.post("/api/signin", json={"username": s.username, "password": s.password})
+        resp = await self._http.post("/api/signin", json={"username": USERNAME, "password": PASSWORD})
         token = resp.json().get("accessToken") if resp.status_code == 200 else None
         if not token:
             raise ToolError(f"Вход в IACPaaS не удался ({resp.status_code}): {resp.text[:300]}")

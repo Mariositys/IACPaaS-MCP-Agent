@@ -22,7 +22,7 @@ from fastmcp.server.lifespan import lifespan
 from pydantic import Field, ValidationError
 
 from .client import IacpaasClient
-from .config import settings
+from .config import ALLOW_WRITE
 from .models import (
     ConceptPath,
     DeleteMode,
@@ -45,7 +45,7 @@ from .models import (
 
 @lifespan
 async def client_lifespan(server: FastMCP):
-    client = IacpaasClient(settings)
+    client = IacpaasClient()
     try:
         yield {"client": client}
     finally:
@@ -68,8 +68,8 @@ def client(ctx: Context) -> IacpaasClient:
 
 
 def require_write_allowed() -> None:
-    if not settings.allow_write:
-        raise ToolError("Запись запрещена политикой сервера (IACPAAS_ALLOW_WRITE=false)")
+    if not ALLOW_WRITE:
+        raise ToolError("Запись запрещена (IACPAAS_ALLOW_WRITE=false)")
 
 
 # ---------- обход экспортированного дерева ----------
@@ -91,8 +91,9 @@ def _norm(concept_path: str) -> str:
     return "/".join(s.strip() for s in SEGMENT.findall(concept_path) if s.strip())
 
 
-def walk(vertex: dict[str, Any], concept_path: str = "", metaconcept_path: str = "", depth: int = 0
-         ) -> Iterator[tuple[dict[str, Any], str, str, int]]:
+def walk(
+    vertex: dict[str, Any], concept_path: str = "", metaconcept_path: str = "", depth: int = 0
+) -> Iterator[tuple[dict[str, Any], str, str, int]]:
     """Обход в глубину: (вершина, concept_path, metaconcept_path, глубина). Корень ИР - пустые пути."""
     yield vertex, concept_path, metaconcept_path, depth
     for child in vertex.get("successors", []):
@@ -131,6 +132,7 @@ def to_node(vertex: dict[str, Any], concept_path: str, metaconcept_path: str, de
 
 
 # ---------- read ----------
+
 
 @mcp.tool(annotations=READ, tags={"read"})
 async def get_inforesource(
@@ -203,6 +205,7 @@ async def query_graph(
 
 # ---------- control ----------
 
+
 @mcp.tool(annotations={"readOnlyHint": True}, tags={"control"})
 async def validate_resource(payload: dict[str, Any] | str) -> ValidationReport:
     """Проверить JSON ИР в универсальном формате теми же правилами, что и перед импортом."""
@@ -215,14 +218,14 @@ async def validate_resource(payload: dict[str, Any] | str) -> ValidationReport:
         InfoResourceDocument.model_validate(payload)
     except ValidationError as e:
         issues = [
-            ValidationIssue(pointer="".join(f"/{p}" for p in err["loc"]), message=err["msg"])
-            for err in e.errors()
+            ValidationIssue(pointer="".join(f"/{p}" for p in err["loc"]), message=err["msg"]) for err in e.errors()
         ]
         return ValidationReport(valid=False, errors=issues)
     return ValidationReport(valid=True)
 
 
 # ---------- write ----------
+
 
 @mcp.tool(annotations=WRITE, tags={"write"})
 async def import_inforesource(
@@ -256,9 +259,10 @@ async def update_vertex(
 async def delete_inforesource(
     ctx: Context,
     path: IrPath,
-    mode: Annotated[DeleteMode, Field(
-        description="deleteIR/trashIR/clearIR - весь ИР; deleteSubGraph/clearSubGraph - подграф по concept_path"
-    )],
+    mode: Annotated[
+        DeleteMode,
+        Field(description="deleteIR/trashIR/clearIR - весь ИР; deleteSubGraph/clearSubGraph - подграф по concept_path"),
+    ],
     concept_path: ConceptPath | None = None,
     metaconcept_path: MetaconceptPath | None = None,
 ) -> OperationResult:

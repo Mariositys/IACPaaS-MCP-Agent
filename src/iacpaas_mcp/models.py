@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from .config import settings
+from .config import MAX_DEPTH, MAX_LIMIT
 
 # ---------- общие типы ----------
 
@@ -26,8 +26,7 @@ NON_SCHEMA_FIELDS = {"id", "specifier", "restrictor"}
 IrPath = Annotated[
     str,
     Field(
-        description="Путь к ИР в «Мой Фонд» без префикса '<e-mail>/Мой Фонд/', "
-        "например 'папка/Имя ИР'",
+        description="Путь к ИР в «Мой Фонд» без префикса '<e-mail>/Мой Фонд/', например 'папка/Имя ИР'",
         min_length=1,
     ),
 ]
@@ -39,11 +38,12 @@ MetaconceptPath = Annotated[
     str,
     Field(description="Путь из меток метавершин, соответствующих вершинам в concept_path"),
 ]
-Limit = Annotated[int, Field(ge=1, le=settings.max_limit, description="Максимум элементов в ответе")]
-Depth = Annotated[int, Field(ge=0, le=settings.max_depth, description="Глубина обхода (0 - только сама вершина)")]
+Limit = Annotated[int, Field(ge=1, le=MAX_LIMIT, description="Максимум элементов в ответе")]
+Depth = Annotated[int, Field(ge=0, le=MAX_DEPTH, description="Глубина обхода (0 - только сама вершина)")]
 
 
 # ---------- ИР в универсальном JSON-формате ----------
+
 
 class Vertex(BaseModel):
     """Вершина (понятие) в универсальном формате. У вершины есть либо name, либо value."""
@@ -52,7 +52,9 @@ class Vertex(BaseModel):
 
     id: int | None = Field(None, description="Идентификатор вершины (только при экспорте, при импорте игнорируется)")
     name: str | None = Field(None, description="Имя вершины (для всех типов, кроме ТЕРМИНАЛ-ЗНАЧЕНИЕ)")
-    value: VertexValue | None = Field(None, description="Значение (только для ТЕРМИНАЛ-ЗНАЧЕНИЕ), формат зависит от valtype")
+    value: VertexValue | None = Field(
+        None, description="Значение (только для ТЕРМИНАЛ-ЗНАЧЕНИЕ), формат зависит от valtype"
+    )
     type: VertexType
     valtype: ValType | None = Field(None, description="Тип значения (для ТЕРМИНАЛ-СОРТ и ТЕРМИНАЛ-ЗНАЧЕНИЕ)")
     meta: str = Field(description="Метка соответствующей метавершины")
@@ -114,6 +116,7 @@ class InfoResourceDocument(Vertex):
 # ---------- граф ----------
 # Подграф, подсчёт и запросы считаются локально по экспорту: отдельных методов в API нет
 
+
 class GraphNode(BaseModel):
     id: int | None = None
     label: VertexValue = Field(description="name или value вершины")
@@ -158,6 +161,7 @@ class QueryResult(BaseModel):
 
 
 # ---------- валидация и запись ----------
+
 
 class ValidationIssue(BaseModel):
     pointer: str = Field(description="JSON Pointer до ошибочного места, например '/successors/0/type'")

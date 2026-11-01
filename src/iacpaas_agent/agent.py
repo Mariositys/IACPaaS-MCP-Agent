@@ -29,6 +29,7 @@ class AgentState(TypedDict):
     question: str
     messages: Annotated[list[AnyMessage], add_messages]
     evidence: dict[str, Any]
+    calls: list[dict[str, Any]]
     answer: AgentAnswer | None
     verdict: Verdict | None
     reasons: list[str]
@@ -86,6 +87,7 @@ def initial_state(question: str) -> AgentState:
         "question": question,
         "messages": [SystemMessage(content=GATHER_PROMPT), HumanMessage(content=question)],
         "evidence": {},
+        "calls": [],
         "answer": None,
         "verdict": None,
         "reasons": [],
@@ -107,6 +109,7 @@ def build_graph(model: ChatOpenAI, tools: list[StructuredTool]):
     async def tools_node(state: AgentState) -> dict[str, Any]:
         last = state["messages"][-1]
         evidence = dict(state["evidence"])
+        calls = list(state["calls"])
         messages = []
         for call in getattr(last, "tool_calls", None) or []:
             call_id = call.get("id") or f"call_{len(evidence) + 1}"
@@ -119,10 +122,11 @@ def build_graph(model: ChatOpenAI, tools: list[StructuredTool]):
                 except Exception as e:  # noqa: BLE001 - ошибка тулза возвращается модели как результат
                     result = {"error": f"Ошибка вызова: {e}", "kind": "platform"}
             evidence[call_id] = result
+            calls.append({"call_id": call_id, "tool": call["name"], "args": call.get("args", {}), "result": result})
             messages.append(
                 ToolMessage(content=json.dumps(result, ensure_ascii=False, default=str), tool_call_id=call_id)
             )
-        return {"messages": messages, "evidence": evidence}
+        return {"messages": messages, "evidence": evidence, "calls": calls}
 
     async def answer_node(state: AgentState) -> dict[str, Any]:
         reasons = ""
@@ -178,10 +182,18 @@ def build_graph(model: ChatOpenAI, tools: list[StructuredTool]):
     return graph.compile()
 
 
-async def run_agent(question: str) -> str:
+async def run_agent(question: str) -> dict[str, Any]:
     transport = StdioTransport(command=sys.executable, args=["-m", "iacpaas_mcp"])
     async with Client(transport) as mcp_client:
         tools = await load_tools(mcp_client)
         graph = build_graph(make_model(), tools)
         result = await graph.ainvoke(initial_state(question))
-    return result["final"]
+    return {
+        "question": question,
+        "final": result["final"],
+        "calls": result["calls"],
+        "answer": result["answer"].model_dump(mode="json") if result["answer"] else None,
+        "verdict": result["verdict"].model_dump() if result["verdict"] else None,
+        "attempts": result["attempts"],
+        "steps": result["steps"],
+    }

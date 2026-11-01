@@ -50,6 +50,15 @@ uv run iacpaas-agent "Сколько вершин в ИР «Пример»?"
 Ответ агента проходит детерминированную проверку: утверждение без источника
 из результатов тулзов не выдаётся пользователю.
 
+Трасса и replay:
+
+```powershell
+uv run iacpaas-agent "Сколько вершин в ИР «Пример»?" --trace traces/run.jsonl
+uv run iacpaas-agent --replay traces/run.jsonl
+```
+
+Replay пересчитывает проверку по записанным вызовам и ответу, без LLM и сети.
+
 ## Структура
 
 - `src/iacpaas_mcp` — MCP-сервер;

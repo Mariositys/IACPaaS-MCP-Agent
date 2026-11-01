@@ -14,7 +14,6 @@ from .config import MAX_DEPTH, MAX_LIMIT
 
 VertexType = Literal["КОРЕНЬ", "НЕТЕРМИНАЛ", "ТЕРМИНАЛ-СОРТ", "ТЕРМИНАЛ-ЗНАЧЕНИЕ"]
 ValType = Literal["STRING", "INTEGER", "REAL", "BOOLEAN", "DATE", "BLOB"]
-JsonType = Literal["universal", "meta", "simple"]
 DeleteMode = Literal["deleteIR", "trashIR", "clearIR", "deleteSubGraph", "clearSubGraph"]
 # float нужен для REAL (по документации это JSON-число), хотя target-ir.schema.json его не допускает
 VertexValue = bool | int | float | str
@@ -154,6 +153,7 @@ class GraphCounts(BaseModel):
 
 
 class QueryResult(BaseModel):
+    path: str = Field(description="Путь к ИР, к которому относится результат")
     query: str
     matches: list[GraphNode]
     total: int
@@ -178,3 +178,24 @@ class OperationResult(BaseModel):
     operation: str
     path: str
     code: str | None = Field(None, description="Код ИР, который вернула платформа")
+
+
+class OperationPreview(BaseModel):
+    operation: str
+    path: str
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+ErrorKind = Literal["not_found", "auth", "platform", "timeout", "validation"]
+
+
+class ErrorResult(BaseModel):
+    error: str
+    kind: ErrorKind
+
+
+class CatalogEntry(BaseModel):
+    path: str = Field(description="Путь к ИР в «Мой Фонд»")
+    title: str
+    description: str | None = None
+    tags: list[str] = Field(default_factory=list)

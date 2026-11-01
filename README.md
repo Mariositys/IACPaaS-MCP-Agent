@@ -26,6 +26,16 @@ uv run iacpaas-mcp --transport http
 - или `IACPAAS_USERNAME` и `IACPAAS_PASSWORD`.
 
 Запись по умолчанию выключена; включить: `IACPAAS_ALLOW_WRITE=true`.
+Write-тулзы без `confirm=true` возвращают план операции и ничего не меняют.
+
+## Каталог ИР
+
+API IACPaaS не умеет перечислять ресурсы, поэтому `list_inforesources` читает локальный
+`.iacpaas/catalog.json`. Скопируйте пример и замените запись на реальный ИР:
+
+```powershell
+Copy-Item .iacpaas/catalog.example.json .iacpaas/catalog.json
+```
 
 ## Структура
 

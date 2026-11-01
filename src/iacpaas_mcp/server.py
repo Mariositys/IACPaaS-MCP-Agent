@@ -1,6 +1,7 @@
 """MCP-сервер IACPaaS: тулзы поверх API импорта-экспорта платформы.
 
 MCP tool               -> операция IACPaaS
+list_inforesources     -> локальный каталог .iacpaas/catalog.json
 get_inforesource       -> GET    /api/data/export/user-item
 get_subgraph           -> GET    /api/data/export/user-item (start-target-concept-path, export-depth)
 count_graph            -> GET    /api/data/export/user-item + подсчёт по дереву
@@ -17,24 +18,25 @@ from collections.abc import Iterator
 from typing import Annotated, Any, Literal
 
 from fastmcp import Context, FastMCP
-from fastmcp.exceptions import ToolError
 from fastmcp.server.lifespan import lifespan
 from pydantic import Field, ValidationError
 
 from .client import IacpaasClient
-from .config import ALLOW_WRITE
+from .config import ALLOW_WRITE, CATALOG_PATH
 from .models import (
+    CatalogEntry,
     ConceptPath,
     DeleteMode,
     Depth,
+    ErrorResult,
     GraphCounts,
     GraphEdge,
     GraphNode,
     InfoResourceDocument,
     IrPath,
-    JsonType,
     Limit,
     MetaconceptPath,
+    OperationPreview,
     OperationResult,
     QueryResult,
     Subgraph,
@@ -67,9 +69,28 @@ def client(ctx: Context) -> IacpaasClient:
     return ctx.lifespan_context["client"]
 
 
-def require_write_allowed() -> None:
+def write_blocked() -> ErrorResult | None:
     if not ALLOW_WRITE:
-        raise ToolError("Запись запрещена (IACPAAS_ALLOW_WRITE=false)")
+        return ErrorResult(error="Запись запрещена (IACPAAS_ALLOW_WRITE=false)", kind="auth")
+    return None
+
+
+def read_catalog() -> list[CatalogEntry] | ErrorResult:
+    if not CATALOG_PATH.exists():
+        return ErrorResult(error=f"Каталог {CATALOG_PATH} не найден", kind="not_found")
+    try:
+        raw = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
+        return [CatalogEntry.model_validate(item) for item in raw]
+    except (OSError, ValueError, TypeError, ValidationError) as e:
+        return ErrorResult(error=f"Не удалось прочитать каталог: {e}", kind="validation")
+
+
+def catalog_candidates(path: str) -> list[str]:
+    entries = read_catalog()
+    if isinstance(entries, ErrorResult):
+        return []
+    name = path.rsplit("/", 1)[-1].casefold()
+    return [entry.path for entry in entries if name in entry.path.casefold() or name in entry.title.casefold()][:5]
 
 
 # ---------- обход экспортированного дерева ----------
@@ -105,14 +126,18 @@ def walk(
         )
 
 
-async def export_from(ctx: Context, path: str, start: str, depth: int | None):
+async def export_from(
+    ctx: Context, path: str, start: str, depth: int | None
+) -> Iterator[tuple[dict[str, Any], str, str, int]] | ErrorResult:
     """Экспортировать ИР от вершины start и вернуть обход её поддерева."""
     doc = await client(ctx).export(path, start_concept_path=start or None, depth=depth)
+    if isinstance(doc, ErrorResult):
+        return doc
     target = _norm(start)
     for vertex, cp, mp, _ in walk(doc):
         if cp == target:
             return walk(vertex, cp, mp)
-    raise ToolError(f"Вершина '{start}' не найдена в ИР '{path}'")
+    return ErrorResult(error=f"Вершина '{start}' не найдена в ИР '{path}'", kind="not_found")
 
 
 def to_node(vertex: dict[str, Any], concept_path: str, metaconcept_path: str, depth: int) -> GraphNode:
@@ -135,15 +160,43 @@ def to_node(vertex: dict[str, Any], concept_path: str, metaconcept_path: str, de
 
 
 @mcp.tool(annotations=READ, tags={"read"})
+def list_inforesources(query: str = "", limit: Limit = 50) -> list[CatalogEntry] | ErrorResult:
+    """Найти ИР в локальном каталоге .iacpaas/catalog.json по пути, названию или тегу."""
+    entries = read_catalog()
+    if isinstance(entries, ErrorResult):
+        return entries
+    needle = query.casefold().strip()
+    if needle:
+        entries = [
+            entry
+            for entry in entries
+            if needle in entry.path.casefold()
+            or needle in entry.title.casefold()
+            or any(needle in tag.casefold() for tag in entry.tags)
+        ]
+    return entries[:limit]
+
+
+@mcp.tool(annotations=READ, tags={"read"})
 async def get_inforesource(
     ctx: Context,
     path: IrPath,
     format: Literal["metadata", "json"] = "metadata",
-    json_type: JsonType = "universal",
-) -> dict[str, Any]:
-    """Получить ИР: metadata - сведения об ИР и корень без потомков, json - весь ИР в формате json_type."""
+    json_type: Literal["universal"] = "universal",
+) -> InfoResourceDocument | ErrorResult:
+    """Получить ИР: metadata - сведения и корень без потомков, json - весь ИР."""
     depth = 0 if format == "metadata" else None
-    return await client(ctx).export(path, json_type, depth=depth)
+    doc = await client(ctx).export(path, json_type, depth=depth)
+    if isinstance(doc, ErrorResult):
+        if doc.kind == "not_found":
+            candidates = catalog_candidates(path)
+            if candidates:
+                doc.error += "; возможно: " + ", ".join(candidates)
+        return doc
+    try:
+        return InfoResourceDocument.model_validate(doc)
+    except ValidationError as e:
+        return ErrorResult(error=f"Ответ IACPaaS не похож на ИР: {e}", kind="validation")
 
 
 @mcp.tool(annotations=READ, tags={"read"})
@@ -153,12 +206,15 @@ async def get_subgraph(
     start: ConceptPath = "",
     depth: Depth = 2,
     limit: Limit = 200,
-) -> Subgraph:
+) -> Subgraph | ErrorResult:
     """Получить подграф ИР (вершины и дуги) от вершины start на глубину depth."""
+    result = await export_from(ctx, path, start, depth)
+    if isinstance(result, ErrorResult):
+        return result
     nodes: list[GraphNode] = []
     edges: list[GraphEdge] = []
     truncated = False
-    for vertex, cp, mp, d in await export_from(ctx, path, start, depth):
+    for vertex, cp, mp, d in result:
         if len(nodes) == limit:
             truncated = True
             break
@@ -167,19 +223,22 @@ async def get_subgraph(
             edges.append(GraphEdge(source=cp, target=_join(cp, _segment(child)), rcomment=child.get("rcomment")))
     included = {n.concept_path for n in nodes}
     edges = [e for e in edges if e.target in included]
-    return Subgraph(path=path, start=start, depth=depth, nodes=nodes, edges=edges, truncated=truncated)
+    return Subgraph(path=path, start=_norm(start), depth=depth, nodes=nodes, edges=edges, truncated=truncated)
 
 
 @mcp.tool(annotations=READ, tags={"read"})
-async def count_graph(ctx: Context, path: IrPath, start: ConceptPath = "") -> GraphCounts:
+async def count_graph(ctx: Context, path: IrPath, start: ConceptPath = "") -> GraphCounts | ErrorResult:
     """Подсчитать вершины и дуги ИР целиком или поддерева от вершины start."""
+    result = await export_from(ctx, path, start, None)
+    if isinstance(result, ErrorResult):
+        return result
     ids: set[Any] = set()
     entries = 0
-    for vertex, *_ in await export_from(ctx, path, start, None):
+    for vertex, *_ in result:
         entries += 1
         # Повторно использованная вершина (link) встречается в дереве снова, но вершиной считается один раз
         ids.add(vertex.get("id", id(vertex)))
-    return GraphCounts(path=path, start=start, nodes=len(ids), edges=entries - 1)
+    return GraphCounts(path=path, start=_norm(start), nodes=len(ids), edges=entries - 1)
 
 
 @mcp.tool(annotations=READ, tags={"read"})
@@ -191,16 +250,21 @@ async def query_graph(
     exact: bool = False,
     start: ConceptPath = "",
     limit: Limit = 50,
-) -> QueryResult:
+) -> QueryResult | ErrorResult:
     """Найти вершины по имени/значению (find_by_label) или по метке метавершины (find_by_meta)."""
+    result = await export_from(ctx, path, start, None)
+    if isinstance(result, ErrorResult):
+        return result
     needle = text.casefold()
     matches: list[GraphNode] = []
-    for vertex, cp, mp, d in await export_from(ctx, path, start, None):
+    for vertex, cp, mp, d in result:
         field = vertex.get("meta", "") if query == "find_by_meta" else vertex.get("name", vertex.get("value", ""))
         hay = str(field).casefold()
         if (hay == needle) if exact else (needle in hay):
             matches.append(to_node(vertex, cp, mp, d))
-    return QueryResult(query=query, matches=matches[:limit], total=len(matches), truncated=len(matches) > limit)
+    return QueryResult(
+        path=path, query=query, matches=matches[:limit], total=len(matches), truncated=len(matches) > limit
+    )
 
 
 # ---------- control ----------
@@ -233,11 +297,23 @@ async def import_inforesource(
     folder: Annotated[str, Field(description="Папка-контейнер в «Мой Фонд», без имени ИР и без '<e-mail>/Мой Фонд/'")],
     resource: InfoResourceDocument,
     clear_if_exists: bool = False,
-) -> OperationResult:
-    """Создать ИР импортом JSON (если ИР уже есть - дописать или очистить перед импортом)."""
-    require_write_allowed()
+    confirm: bool = False,
+) -> OperationResult | OperationPreview | ErrorResult:
+    """Создать ИР импортом JSON. Без confirm возвращает план операции и ничего не меняет."""
+    path = _join(folder, resource.title)
+    if not confirm:
+        return OperationPreview(
+            operation="import",
+            path=path,
+            details={"folder": folder, "title": resource.title, "clear_if_exists": clear_if_exists},
+        )
+    blocked = write_blocked()
+    if blocked:
+        return blocked
     data = await client(ctx).import_(folder, resource.to_import_dict(), clear_if_exists)
-    return OperationResult(success=True, operation="import", path=_join(folder, resource.title), code=data.get("code"))
+    if isinstance(data, ErrorResult):
+        return data
+    return OperationResult(success=True, operation="import", path=path, code=data.get("code"))
 
 
 @mcp.tool(annotations=WRITE, tags={"write"})
@@ -248,10 +324,26 @@ async def update_vertex(
     metaconcept_path: MetaconceptPath,
     mark: Annotated[str, Field(description="Новая метка вершины (строкой)")],
     comment: str | None = None,
-) -> OperationResult:
-    """Изменить метку и/или комментарий вершины. Пути берутся из get_subgraph/query_graph."""
-    require_write_allowed()
+    confirm: bool = False,
+) -> OperationResult | OperationPreview | ErrorResult:
+    """Изменить метку и/или комментарий вершины. Без confirm возвращает план операции."""
+    if not confirm:
+        return OperationPreview(
+            operation="update",
+            path=path,
+            details={
+                "concept_path": concept_path,
+                "metaconcept_path": metaconcept_path,
+                "mark": mark,
+                "comment": comment,
+            },
+        )
+    blocked = write_blocked()
+    if blocked:
+        return blocked
     data = await client(ctx).update(path, concept_path, metaconcept_path, mark, comment)
+    if isinstance(data, ErrorResult):
+        return data
     return OperationResult(success=True, operation="update", path=path, code=data.get("code"))
 
 
@@ -265,10 +357,24 @@ async def delete_inforesource(
     ],
     concept_path: ConceptPath | None = None,
     metaconcept_path: MetaconceptPath | None = None,
-) -> OperationResult:
-    """Удалить/очистить ИР целиком или подграф в нём."""
-    require_write_allowed()
+    confirm: bool = False,
+) -> OperationResult | OperationPreview | ErrorResult:
+    """Удалить/очистить ИР или подграф. Без confirm возвращает план операции."""
     if mode.endswith("SubGraph") and (concept_path is None or metaconcept_path is None):
-        raise ToolError(f"Для {mode} нужны concept_path и metaconcept_path")
+        return ErrorResult(error=f"Для {mode} нужны concept_path и metaconcept_path", kind="validation")
+    if not confirm:
+        return OperationPreview(
+            operation=mode,
+            path=path,
+            details={
+                "concept_path": concept_path,
+                "metaconcept_path": metaconcept_path,
+            },
+        )
+    blocked = write_blocked()
+    if blocked:
+        return blocked
     data = await client(ctx).delete(path, mode, concept_path, metaconcept_path)
+    if isinstance(data, ErrorResult):
+        return data
     return OperationResult(success=True, operation=mode, path=path, code=data.get("code"))

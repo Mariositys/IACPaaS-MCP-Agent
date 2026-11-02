@@ -5,6 +5,7 @@ from typing import Any
 
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
 from iacpaas_agent.agent import MODEL_NAME, run_agent
@@ -14,7 +15,9 @@ from iacpaas_mcp.models import ErrorResult
 from iacpaas_mcp.server import read_catalog
 
 INDEX = Path(__file__).with_name("index.html")
+STATIC = Path(__file__).with_name("static")
 app = FastAPI(title="IACPaaS Chat")
+app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
 class ChatRequest(BaseModel):

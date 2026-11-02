@@ -56,7 +56,9 @@ flowchart LR
 | `src/iacpaas_agent/trace.py` | запись JSONL и replay без сети |
 | `src/iacpaas_agent/prompts.py` | промпты и `PROMPT_VERSION` |
 | `src/iacpaas_web/app.py` | FastAPI: чат, каталог, health |
-| `src/iacpaas_web/index.html` | интерфейс чата, источники и трасса |
+| `src/iacpaas_web/index.html` | разметка чата |
+| `src/iacpaas_web/static/style.css` | тёмная тема |
+| `src/iacpaas_web/static/app.js` | логика чата, источники и трасса |
 
 ## Гарантии и границы
 

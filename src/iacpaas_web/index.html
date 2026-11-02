@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IACPaaS Chat</title>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --card: #ffffff;
+      --line: #dfe3e8;
+      --text: #1f2933;
+      --muted: #667085;
+      --accent: #2f6fed;
+      --green: #137a4b;
+      --yellow: #8a5a00;
+      --red: #b42318;
+      --gray: #475467;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+    }
+    button { font: inherit; cursor: pointer; }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+      padding: 12px 20px;
+      background: var(--card);
+      border-bottom: 1px solid var(--line);
+    }
+    .brand { font-size: 18px; font-weight: 700; }
+    .status { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .pill {
+      font-size: 12px;
+      background: #eef2f6;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 5px 10px;
+      color: var(--muted);
+    }
+    .ghost {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 7px 12px;
+      color: var(--text);
+    }
+    .ghost:hover { border-color: #9db7f5; }
+    .ghost:disabled { opacity: .5; cursor: default; }
+    .layout { flex: 1; display: flex; min-height: 0; }
+    .sidebar {
+      width: 280px;
+      flex-shrink: 0;
+      padding: 16px;
+      overflow: auto;
+      background: #fbfcfd;
+      border-right: 1px solid var(--line);
+    }
+    .label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      color: var(--muted);
+    }
+    input[type="search"] {
+      width: 100%;
+      margin: 8px 0 12px;
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      font: inherit;
+    }
+    .catalog { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+    .catalog-item {
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--card);
+      cursor: pointer;
+    }
+    .catalog-item:hover { border-color: #9db7f5; }
+    .catalog-title { font-size: 14px; font-weight: 600; }
+    .catalog-path { margin-top: 2px; font-size: 12px; color: var(--muted); word-break: break-word; }
+    .hint { min-height: 16px; font-size: 12px; color: var(--muted); }
+    .sidebar-note { margin-top: 16px; font-size: 12px; line-height: 1.4; color: var(--muted); }
+    .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    .messages { flex: 1; overflow: auto; padding: 24px; display: flex; flex-direction: column; gap: 14px; }
+    .row { display: flex; width: 100%; max-width: 900px; margin: 0 auto; }
+    .row.user { justify-content: flex-end; }
+    .row.agent { justify-content: flex-start; }
+    .bubble {
+      max-width: 85%;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--card);
+      box-shadow: 0 1px 1px rgba(16, 24, 40, .03);
+    }
+    .user-bubble { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .answer-text { white-space: pre-wrap; line-height: 1.5; }
+    .bubble-head { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+    .badge { font-size: 11px; font-weight: 600; border-radius: 999px; padding: 3px 8px; }
+    .badge-green { background: #e7f6ee; color: var(--green); }
+    .badge-yellow { background: #fff4d6; color: var(--yellow); }
+    .badge-red { background: #fde8e7; color: var(--red); }
+    .badge-gray { background: #eef2f6; color: var(--gray); }
+    .meta { margin-top: 8px; font-size: 12px; color: var(--muted); }
+    details { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+    summary { cursor: pointer; font-size: 13px; color: #344054; }
+    .claim { margin: 10px 0; padding-left: 10px; border-left: 2px solid #d0d5dd; }
+    .claim-statement { font-size: 13px; font-weight: 600; }
+    .claim-meta, .source { margin-top: 4px; font-size: 12px; color: var(--muted); word-break: break-word; }
+    .source { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+    pre {
+      margin: 6px 0 0;
+      padding: 10px;
+      max-height: 260px;
+      overflow: auto;
+      background: #f6f8fa;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      font-size: 12px;
+    }
+    .trace-call { margin-top: 10px; }
+    .trace-title { margin-bottom: 4px; font-size: 12px; font-weight: 600; }
+    .small { margin-top: 8px; padding: 6px 10px; font-size: 12px; }
+    .empty { max-width: 700px; margin: auto; padding: 40px 16px; text-align: center; color: var(--muted); }
+    .empty h1 { margin: 0 0 8px; font-size: 24px; color: var(--text); }
+    .chips { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 18px; }
+    .chip {
+      padding: 8px 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--card);
+      color: #344054;
+    }
+    .chip:hover { border-color: #9db7f5; }
+    .composer {
+      display: flex;
+      gap: 10px;
+      padding: 14px 24px 6px;
+      background: var(--card);
+      border-top: 1px solid var(--line);
+    }
+    textarea {
+      flex: 1;
+      min-height: 44px;
+      max-height: 160px;
+      padding: 11px 12px;
+      resize: none;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      font: inherit;
+      line-height: 1.4;
+    }
+    textarea:focus, input:focus { outline: 2px solid #b9ccf7; border-color: var(--accent); }
+    #send {
+      padding: 0 18px;
+      border: none;
+      border-radius: 10px;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 600;
+    }
+    #send:disabled { opacity: .5; cursor: default; }
+    .footnote { padding: 6px 0 10px; text-align: center; font-size: 11px; color: var(--muted); }
+    .error-bubble { border-color: #f5b5b0; background: #fffafa; }
+    .spinner {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      margin-right: 6px;
+      vertical-align: -1px;
+      border: 2px solid #c7d2fe;
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (max-width: 820px) {
+      .sidebar { display: none; }
+      .bubble { max-width: 100%; }
+      .messages { padding: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">IACPaaS Chat</div>
+    <div class="status">
+      <span id="model" class="pill">модель: …</span>
+      <span id="prompt" class="pill">контракт: …</span>
+      <span class="pill">temperature 0</span>
+      <span class="pill">запись: выкл.</span>
+      <button id="new-chat" class="ghost" type="button">Новый чат</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <label class="label" for="catalog-search">Каталог ИР</label>
+      <input id="catalog-search" type="search" placeholder="Поиск по названию или пути">
+      <div id="catalog-error" class="hint"></div>
+      <ul id="catalog-list" class="catalog"></ul>
+      <div class="sidebar-note">Клик по ИР вставит путь в поле вопроса. Каталог читается из <code>.iacpaas/catalog.json</code>.</div>
+    </aside>
+
+    <main class="main">
+      <section id="messages" class="messages" aria-live="polite">
+        <div id="empty" class="empty">
+          <h1>Чат по инфоресурсам IACPaaS</h1>
+          <p>Ответы строятся только по результатам MCP-тулзов и проверяются валидатором.</p>
+          <div class="chips">
+            <button class="chip" type="button" data-question="Какие ИР есть в каталоге?">Какие ИР есть в каталоге?</button>
+            <button class="chip" type="button" data-question="Сколько вершин в ИР «Пример»?">Сколько вершин в ИР «Пример»?</button>
+          </div>
+        </div>
+      </section>
+
+      <form id="composer" class="composer">
+        <textarea id="question" rows="1" placeholder="Введите вопрос..." aria-label="Вопрос"></textarea>
+        <button id="send" type="submit">Отправить</button>
+      </form>
+      <div class="footnote">В модель передаются последние 3 хода для контекста; каждый новый ответ проверяется валидатором.</div>
+    </main>
+  </div>
+
+  <script>
+    const messages = document.getElementById("messages");
+    const empty = document.getElementById("empty");
+    const form = document.getElementById("composer");
+    const input = document.getElementById("question");
+    const send = document.getElementById("send");
+    const catalogList = document.getElementById("catalog-list");
+    const catalogSearch = document.getElementById("catalog-search");
+    const catalogError = document.getElementById("catalog-error");
+    const modelPill = document.getElementById("model");
+    const promptPill = document.getElementById("prompt");
+    const newChat = document.getElementById("new-chat");
+    let turns = [];
+
+    function h(tag, className, text) {
+      const node = document.createElement(tag);
+      if (className) node.className = className;
+      if (text !== undefined) node.textContent = text;
+      return node;
+    }
+
+    function scrollDown() {
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    function hideEmpty() {
+      empty.style.display = "none";
+    }
+
+    function badge(data) {
+      if (data.answer && data.answer.refused) return ["Нужны данные", "badge-gray"];
+      if (data.verdict && data.verdict.ok && data.attempts > 1) return ["Исправлено", "badge-yellow"];
+      if (data.verdict && data.verdict.ok) return ["Проверено", "badge-green"];
+      return ["Не подтверждено", "badge-red"];
+    }
+
+    function addUser(text) {
+      const row = h("div", "row user");
+      const bubble = h("div", "bubble user-bubble");
+      bubble.append(h("div", "answer-text", text));
+      row.append(bubble);
+      messages.append(row);
+      hideEmpty();
+      scrollDown();
+    }
+
+    function addLoading() {
+      const row = h("div", "row agent");
+      const bubble = h("div", "bubble");
+      const line = h("div", "answer-text");
+      line.append(h("span", "spinner"));
+      line.append(document.createTextNode("Собираю данные и проверяю ответ…"));
+      bubble.append(line);
+      row.append(bubble);
+      messages.append(row);
+      hideEmpty();
+      scrollDown();
+      return row;
+    }
+
+    function addError(text, kind) {
+      const row = h("div", "row agent");
+      const bubble = h("div", "bubble error-bubble");
+      bubble.append(h("span", "badge badge-red", `Ошибка: ${kind || "platform"}`));
+      bubble.append(h("div", "answer-text", text));
+      row.append(bubble);
+      messages.append(row);
+      hideEmpty();
+      scrollDown();
+    }
+
+    function renderClaims(claims, calls) {
+      const details = h("details", "sources");
+      details.append(h("summary", null, `Источники (${claims.length})`));
+      for (const claim of claims) {
+        const item = h("div", "claim");
+        item.append(h("div", "claim-statement", claim.statement));
+        const meta = [];
+        if (claim.value !== null && claim.value !== undefined) meta.push(`value: ${JSON.stringify(claim.value)}`);
+        if (claim.quote) meta.push(`quote: «${claim.quote}»`);
+        if (meta.length) item.append(h("div", "claim-meta", meta.join(" · ")));
+        for (const source of claim.sources || []) {
+          const call = (calls || []).find(item => item.call_id === source.call_id);
+          const tool = call ? call.tool : "?";
+          const pointer = source.pointer || "''";
+          const expr = source.expr ? ` · expr: ${source.expr}` : "";
+          item.append(h("div", "source", `${source.call_id} · ${tool} · ${pointer}${expr}`));
+        }
+        details.append(item);
+      }
+      return details;
+    }
+
+    function downloadTrace(data) {
+      const blob = new Blob([JSON.stringify(data) + "\n"], { type: "application/json" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `trace-${Date.now()}.jsonl`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    }
+
+    function renderTrace(data) {
+      const details = h("details", "trace");
+      details.append(h("summary", null, `Трасса (${data.calls.length} вызовов)`));
+      for (const call of data.calls) {
+        const block = h("div", "trace-call");
+        block.append(h("div", "trace-title", `${call.tool} · ${call.call_id}`));
+        block.append(h("pre", null, JSON.stringify({ args: call.args, result: call.result }, null, 2)));
+        details.append(block);
+      }
+      const download = h("button", "ghost small", "Скачать JSONL");
+      download.type = "button";
+      download.addEventListener("click", () => downloadTrace(data));
+      details.append(download);
+      return details;
+    }
+
+    function renderAnswer(data) {
+      const row = h("div", "row agent");
+      const bubble = h("div", "bubble");
+      const head = h("div", "bubble-head");
+      const [label, className] = badge(data);
+      head.append(h("span", `badge ${className}`, label));
+      bubble.append(head);
+
+      const answer = data.answer || {};
+      bubble.append(h("div", "answer-text", answer.answer || data.final || "Нет ответа."));
+
+      if (data.attempts !== undefined) {
+        bubble.append(h("div", "meta", `попыток: ${data.attempts} · шагов: ${data.steps ?? "?"}`));
+      }
+
+      if (answer.claims && answer.claims.length) {
+        bubble.append(renderClaims(answer.claims, data.calls));
+      }
+      if (data.calls && data.calls.length) {
+        bubble.append(renderTrace(data));
+      }
+      if (data.verdict && !data.verdict.ok && data.verdict.reasons && data.verdict.reasons.length) {
+        const reasons = h("div", "claim");
+        reasons.append(h("div", "claim-statement", "Причины отказа валидатора"));
+        for (const reason of data.verdict.reasons) {
+          reasons.append(h("div", "claim-meta", reason));
+        }
+        bubble.append(reasons);
+      } else if (data.reasons && data.reasons.length) {
+        const reasons = h("div", "claim");
+        reasons.append(h("div", "claim-statement", "Почему ответ не подтверждён"));
+        for (const reason of data.reasons) {
+          reasons.append(h("div", "claim-meta", reason));
+        }
+        bubble.append(reasons);
+      }
+
+      row.append(bubble);
+      return row;
+    }
+
+    async function ask(question) {
+      addUser(question);
+      input.value = "";
+      input.style.height = "auto";
+      send.disabled = true;
+      newChat.disabled = true;
+      const loading = addLoading();
+
+      try {
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question, history: turns.slice(-3) }),
+        });
+        const data = await response.json();
+        loading.remove();
+        if (!response.ok || data.error) {
+          addError(data.error || `HTTP ${response.status}`, data.kind);
+        } else {
+          messages.append(renderAnswer(data));
+          turns.push({ question, answer: data.answer, calls: data.calls });
+          if (turns.length > 10) turns.shift();
+          scrollDown();
+        }
+      } catch (error) {
+        loading.remove();
+        addError(`Сеть: ${error.message}`, "platform");
+      } finally {
+        send.disabled = false;
+        newChat.disabled = false;
+        input.focus();
+      }
+    }
+
+    async function loadHealth() {
+      try {
+        const response = await fetch("/api/health");
+        const data = await response.json();
+        modelPill.textContent = `модель: ${data.model}`;
+        promptPill.textContent = `контракт: v${data.prompt_version}`;
+      } catch {
+        modelPill.textContent = "модель: ?";
+        promptPill.textContent = "контракт: ?";
+      }
+    }
+
+    async function loadCatalog() {
+      catalogError.textContent = "";
+      catalogList.replaceChildren();
+      try {
+        const response = await fetch(`/api/catalog?query=${encodeURIComponent(catalogSearch.value)}`);
+        const data = await response.json();
+        if (data.error) {
+          catalogError.textContent = data.error;
+          return;
+        }
+        if (!data.items.length) {
+          catalogError.textContent = "Ничего не найдено";
+          return;
+        }
+        for (const item of data.items) {
+          const entry = h("li", "catalog-item");
+          entry.append(h("div", "catalog-title", item.title));
+          entry.append(h("div", "catalog-path", item.path));
+          entry.addEventListener("click", () => {
+            input.value = item.path;
+            input.focus();
+          });
+          catalogList.append(entry);
+        }
+      } catch (error) {
+        catalogError.textContent = `Ошибка каталога: ${error.message}`;
+      }
+    }
+
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const question = input.value.trim();
+      if (!question || send.disabled) return;
+      ask(question);
+    });
+
+    input.addEventListener("input", () => {
+      input.style.height = "auto";
+      input.style.height = `${Math.min(input.scrollHeight, 160)}px`;
+    });
+
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        form.requestSubmit();
+      }
+    });
+
+    let catalogTimer;
+    catalogSearch.addEventListener("input", () => {
+      clearTimeout(catalogTimer);
+      catalogTimer = setTimeout(loadCatalog, 250);
+    });
+
+    newChat.addEventListener("click", () => {
+      messages.replaceChildren(empty);
+      empty.style.display = "";
+      turns = [];
+      input.value = "";
+      input.style.height = "auto";
+      input.focus();
+    });
+
+    document.querySelectorAll(".chip").forEach((chip) => {
+      chip.addEventListener("click", () => {
+        input.value = chip.dataset.question;
+        input.focus();
+      });
+    });
+
+    loadHealth();
+    loadCatalog();
+    input.focus();
+  </script>
+</body>
+</html>

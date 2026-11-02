@@ -20,6 +20,7 @@ def write_trace(path: Path, result: dict[str, Any]) -> None:
         "calls": result["calls"],
         "answer": result["answer"],
         "verdict": result["verdict"],
+        "reasons": result.get("reasons", []),
         "final": result["final"],
         "attempts": result["attempts"],
         "steps": result["steps"],
@@ -46,4 +47,6 @@ def replay(path: Path) -> tuple[dict[str, Any], Verdict]:
     recorded = trace.get("verdict") or {}
     if recorded.get("ok") != verdict.ok:
         print("Предупреждение: результат проверки не совпал с записанным", file=sys.stderr)
+    for reason in trace.get("reasons", []):
+        print(f"- {reason}", file=sys.stderr)
     return trace, verdict

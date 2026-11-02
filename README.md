@@ -46,6 +46,27 @@ uv run python scripts/p0_check.py "папка/Имя ИР"
 Скрипт вызывает все read-only тулзы и печатает результаты или полные тексты ошибок.
 Нужны только учётные данные IACPaaS, LLM не используется.
 
+## MCP Inspector
+
+Браузерный интерфейс для тулзов, ключи IACPaaS не нужны для запуска:
+
+```powershell
+npx -y @modelcontextprotocol/inspector uv run iacpaas-mcp
+```
+
+В Inspector видно 9 тулзов и их схемы. `list_inforesources` работает по локальному
+каталогу, `validate_resource` — локально; остальные чтения без ключей вернут `kind="auth"`.
+
+## Демо без ключей
+
+Проверить валидатор и replay на готовой трассе:
+
+```powershell
+uv run iacpaas-agent --replay examples/demo_trace.jsonl
+```
+
+Для `validate_resource` в Inspector используйте `examples/minimal-ir.json`.
+
 ## Агент
 
 Нужен ключ модели: `OPENAI_API_KEY` или `IACPAAS_AGENT_API_KEY`.
@@ -68,6 +89,20 @@ uv run iacpaas-agent --replay traces/run.jsonl
 
 Replay пересчитывает проверку по записанным вызовам и ответу, без LLM и сети.
 
+## Веб-чат
+
+```powershell
+uv run iacpaas-web
+```
+
+Откройте `http://127.0.0.1:8000`. Интерфейс показывает каталог ИР, ответ агента,
+бейдж проверки, источники claims и трассу вызовов; трассу можно скачать в JSONL.
+
+Чат работает в read-only режиме и без авторизации пользователей: сервер слушает
+`127.0.0.1`. Для ответов нужен ключ модели; без ключей IACPaaS чтение вернёт `kind="auth"`.
+В модель передаются последние 3 хода; их `call_id` переименовываются в `h1_...`, `h2_...`
+и остаются доступны валидатору.
+
 ## VS Code
 
 Откройте папку `IACPaaS-MCP-Agent`, выполните `uv sync` и выберите агента **IACPaaS**
@@ -85,6 +120,7 @@ Replay пересчитывает проверку по записанным в�
 
 - `src/iacpaas_mcp` — MCP-сервер;
 - `src/iacpaas_agent` — LangGraph-агент, валидатор и трасса;
+- `src/iacpaas_web` — браузерный чат на FastAPI;
 - `docs` — архитектура, сценарии, соответствие API и решения;
 - `.vscode/mcp.json`, `.github/agents/iacpaas.agent.md` — режим VS Code.
 
@@ -98,5 +134,5 @@ Replay пересчитывает проверку по записанным в�
 
 ## Статус
 
-M0–M7 готовы. Отложено до v2: сжатие ответов, автотесты, LLM-judge.
+M0–M7 и веб-чат готовы. Отложено до v2: сжатие ответов, автотесты, LLM-judge.
 

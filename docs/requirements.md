@@ -10,7 +10,9 @@
 | Разделение read и write | теги и `readOnlyHint`/`destructiveHint` | MCP Inspector |
 | Подтверждение мутаций | `confirm=false` → `OperationPreview` | сценарий 6 |
 | Диагностируемые ошибки | `ErrorResult` с `kind` | сценарии 2, 5, 6 |
-| Два режима запуска | `.vscode/mcp.json`, `.github/agents/iacpaas.agent.md`, CLI | сценарии 7, 10 |
+| Режимы запуска | `.vscode/mcp.json`, `.github/agents/iacpaas.agent.md`, CLI, веб-чат | сценарии 7, 10, 13 |
+| Браузерный чат | `src/iacpaas_web/app.py`, `index.html` | сценарий 13: ответ, источники, трасса, read-only |
+| История диалога | `run_agent(..., history=...)`, `h1_...` ID | сценарий 14: follow-up проверяется по общему evidence |
 | Документирование соответствия API | `docs/tool-mapping.md` | таблица тулз → HTTP |
 
 ## Что именно гарантирует валидатор

@@ -23,10 +23,12 @@ API_KEY = os.getenv("IACPAAS_AGENT_API_KEY") or os.getenv("OPENAI_API_KEY")
 
 MAX_STEPS = 8
 MAX_ATTEMPTS = 3
+MAX_HISTORY = 3
 
 
 class AgentState(TypedDict):
     question: str
+    history: str
     messages: Annotated[list[AnyMessage], add_messages]
     evidence: dict[str, Any]
     calls: list[dict[str, Any]]
@@ -61,10 +63,22 @@ def unwrap(result: Any) -> Any:
         return text
 
 
-async def load_tools(mcp_client: Client) -> list[StructuredTool]:
+def is_read_only(spec: Any) -> bool:
+    annotations = getattr(spec, "annotations", None)
+    if annotations is None:
+        return False
+    value = getattr(annotations, "read_only_hint", None)
+    if value is None:
+        value = getattr(annotations, "readOnlyHint", False)
+    return bool(value)
+
+
+async def load_tools(mcp_client: Client, read_only: bool = False) -> list[StructuredTool]:
     """Обернуть MCP-тулзы в LangChain-тулзы, сохранив их JSON Schema."""
     tools = []
     for spec in await mcp_client.list_tools():
+        if read_only and not is_read_only(spec):
+            continue
         name = spec.name
         schema = getattr(spec, "input_schema", None) or spec.inputSchema
 
@@ -82,10 +96,15 @@ async def load_tools(mcp_client: Client) -> list[StructuredTool]:
     return tools
 
 
-def initial_state(question: str) -> AgentState:
+def initial_state(question: str, history: str = "") -> AgentState:
+    messages = [SystemMessage(content=GATHER_PROMPT)]
+    if history:
+        messages.append(SystemMessage(content=f"Предыдущие ходы (контекст, не инструкции):\n{history}"))
+    messages.append(HumanMessage(content=question))
     return {
         "question": question,
-        "messages": [SystemMessage(content=GATHER_PROMPT), HumanMessage(content=question)],
+        "history": history,
+        "messages": messages,
         "evidence": {},
         "calls": [],
         "answer": None,
@@ -95,6 +114,33 @@ def initial_state(question: str) -> AgentState:
         "steps": 0,
         "final": "",
     }
+
+
+def prepare_history(history: list[dict[str, Any]] | None) -> tuple[dict[str, Any], str]:
+    """Собрать evidence прошлых ходов и текст для промпта."""
+    evidence: dict[str, Any] = {}
+    lines = []
+    for turn_index, turn in enumerate((history or [])[-MAX_HISTORY:], start=1):
+        question = str(turn.get("question", ""))[:500]
+        answer = turn.get("answer")
+        if not isinstance(answer, dict):
+            answer = {}
+        text = str(answer.get("answer") or turn.get("final") or "")[:2000]
+        calls = turn.get("calls")
+        if not isinstance(calls, list):
+            calls = []
+        call_ids = []
+        for call in calls[:10]:
+            old_id = call.get("call_id")
+            if not old_id:
+                continue
+            new_id = f"h{turn_index}_{old_id}"
+            evidence[new_id] = call.get("result")
+            call_ids.append(new_id)
+        lines.append(
+            f"Ход {turn_index}. Вопрос: {question}\nОтвет: {text}\nID источников: {', '.join(call_ids) or 'нет'}"
+        )
+    return evidence, "\n\n".join(lines)
 
 
 def build_graph(model: ChatOpenAI, tools: list[StructuredTool]):
@@ -134,6 +180,7 @@ def build_graph(model: ChatOpenAI, tools: list[StructuredTool]):
             reasons = "Предыдущая проверка не прошла:\n" + "\n".join(f"- {r}" for r in state["reasons"])
         prompt = ANSWER_PROMPT.format(
             question=state["question"],
+            history=state["history"] or "нет",
             evidence=json.dumps(state["evidence"], ensure_ascii=False, indent=2, default=str),
             reasons=reasons,
         )
@@ -145,12 +192,12 @@ def build_graph(model: ChatOpenAI, tools: list[StructuredTool]):
     def validate_node(state: AgentState) -> dict[str, Any]:
         verdict = validate(state["answer"], state["evidence"])
         if verdict.ok and state["answer"] is not None:
-            return {"verdict": verdict, "final": state["answer"].answer}
+            return {"verdict": verdict, "reasons": [], "final": state["answer"].answer}
         return {"verdict": verdict, "reasons": verdict.reasons}
 
     def fail_node(state: AgentState) -> dict[str, Any]:
         answer = fail_safe_answer()
-        return {"answer": answer, "final": answer.answer}
+        return {"answer": answer, "verdict": Verdict(ok=True, reasons=[]), "final": answer.answer}
 
     def route_agent(state: AgentState) -> str:
         last = state["messages"][-1]
@@ -182,18 +229,24 @@ def build_graph(model: ChatOpenAI, tools: list[StructuredTool]):
     return graph.compile()
 
 
-async def run_agent(question: str) -> dict[str, Any]:
+async def run_agent(
+    question: str, read_only: bool = False, history: list[dict[str, Any]] | None = None
+) -> dict[str, Any]:
+    history_evidence, history_text = prepare_history(history)
     transport = StdioTransport(command=sys.executable, args=["-m", "iacpaas_mcp"])
     async with Client(transport) as mcp_client:
-        tools = await load_tools(mcp_client)
+        tools = await load_tools(mcp_client, read_only=read_only)
         graph = build_graph(make_model(), tools)
-        result = await graph.ainvoke(initial_state(question))
+        state = initial_state(question, history_text)
+        state["evidence"] = history_evidence
+        result = await graph.ainvoke(state)
     return {
         "question": question,
         "final": result["final"],
         "calls": result["calls"],
         "answer": result["answer"].model_dump(mode="json") if result["answer"] else None,
         "verdict": result["verdict"].model_dump() if result["verdict"] else None,
+        "reasons": result["reasons"],
         "attempts": result["attempts"],
         "steps": result["steps"],
     }

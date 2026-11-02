@@ -20,7 +20,7 @@ uv run iacpaas-mcp --transport http
 ## Авторизация
 
 Базовый URL захардкожен: `https://iacpaas.dvo.ru`.
-Учётные данные берутся из переменных окружения:
+Учетные данные берутся из переменных окружения:
 
 - `IACPAAS_API_KEY` — ключ администратора;
 - или `IACPAAS_USERNAME` и `IACPAAS_PASSWORD`.
@@ -37,6 +37,15 @@ API IACPaaS не умеет перечислять ресурсы, поэтом�
 Copy-Item .iacpaas/catalog.example.json .iacpaas/catalog.json
 ```
 
+## Проверка чтения
+
+```powershell
+uv run python scripts/p0_check.py "папка/Имя ИР"
+```
+
+Скрипт вызывает все read-only тулзы и печатает результаты или полные тексты ошибок.
+Нужны только учётные данные IACPaaS, LLM не используется.
+
 ## Агент
 
 Нужен ключ модели: `OPENAI_API_KEY` или `IACPAAS_AGENT_API_KEY`.
@@ -48,7 +57,7 @@ uv run iacpaas-agent "Сколько вершин в ИР «Пример»?"
 Модель по умолчанию — `gpt-4o-mini`; изменить можно через `IACPAAS_AGENT_MODEL`,
 свой OpenAI-совместимый endpoint — через `IACPAAS_AGENT_BASE_URL`.
 Ответ агента проходит детерминированную проверку: claims без источника
-из результатов тулзов отклоняются, после двух починок выдаётся fail-safe.
+или без проверяемого `value`/`quote` отклоняются, после двух починок выдается fail-safe.
 
 Трасса и replay:
 

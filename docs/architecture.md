@@ -14,7 +14,7 @@ flowchart LR
   M -->|JSON/HTTP| P[(IACPaaS JSON API)]
 ```
 
-- **VS Code** — MCP-сервер подключается из `.vscode/mcp.json`, поведение задаёт
+- **VS Code** — MCP-сервер подключается из `.vscode/mcp.json`, поведение задает
   `.github/agents/iacpaas.agent.md`. Доступны только read-only тулзы.
 - **Standalone** — `iacpaas-agent`: LangGraph-цикл, структурированный ответ,
   детерминированная проверка, трасса и replay.
@@ -44,7 +44,7 @@ flowchart LR
 | `src/iacpaas_mcp/client.py` | HTTP-адаптер к IACPaaS, авторизация, `ErrorResult` |
 | `src/iacpaas_mcp/models.py` | Pydantic-модели входов/выходов тулзов |
 | `src/iacpaas_mcp/config.py` | константы, базовый URL и секреты из окружения |
-| `src/iacpaas_agent/agent.py` | LangGraph-цикл, обёртки MCP-тулзов, модель |
+| `src/iacpaas_agent/agent.py` | LangGraph-цикл, обертки MCP-тулзов, модель |
 | `src/iacpaas_agent/schemas.py` | `AgentAnswer`, `Claim`, `Source` |
 | `src/iacpaas_agent/validator.py` | детерминированная проверка ответа |
 | `src/iacpaas_agent/trace.py` | запись JSONL и replay без сети |
@@ -54,9 +54,10 @@ flowchart LR
 
 - Каждое утверждение в `AgentAnswer.claims` имеет источник: `call_id` и JSON Pointer.
 - Валидатор проверяет существование источника, указателя, значения, формулу и
-  отсутствие ответа без вызовов тулзов.
-- `temperature=0` снижает разброс, но гарантию даёт только валидатор.
-- «Без внутренних знаний» означает: нет подтверждённого источника — нет утверждения
+  отсутствие ответа без вызовов тулзов. Для текстового факта нужен точный `value`
+  или дословная `quote`; без них claim отклоняется.
+- `temperature=0` снижает разброс, но гарантию дает только валидатор.
+- «Без внутренних знаний» означает: нет подтвержденного источника — нет утверждения
   в `claims`. Свободный текст `answer` валидатором не проверяется.
 - В режиме VS Code детерминированного валидатора нет: там работают только
   инструкции агенту и read-only набор тулзов.

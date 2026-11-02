@@ -2,6 +2,7 @@
 
 import ast
 import json
+import unicodedata
 from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
@@ -32,12 +33,27 @@ def resolve_pointer(data: Any, pointer: str) -> Any:
     return current
 
 
+def normalize_text(value: str) -> str:
+    """Привести текст к сравнимому виду без синонимов и стемминга."""
+    text = unicodedata.normalize("NFKC", value)
+    text = text.translate(str.maketrans({"«": '"', "»": '"', "“": '"', "”": '"', "–": "-", "—": "-", "−": "-"}))
+    return " ".join(text.casefold().split())
+
+
 def same_value(expected: Any, actual: Any) -> bool:
+    if isinstance(expected, str) and isinstance(actual, str):
+        return normalize_text(expected) == normalize_text(actual)
     if isinstance(expected, bool) or isinstance(actual, bool):
         return type(expected) is type(actual) and expected == actual
     if isinstance(expected, (int, float)) and isinstance(actual, (int, float)):
         return abs(float(expected) - float(actual)) <= 1e-6
     return expected == actual
+
+
+def quote_matches(quote: str, actual: Any) -> bool:
+    """Проверить, что цитата встречается в значении по указателю."""
+    haystack = actual if isinstance(actual, str) else json.dumps(actual, ensure_ascii=False, sort_keys=True)
+    return normalize_text(quote) in normalize_text(haystack)
 
 
 def evaluate_expr(expr: str, root: Any) -> Any:
@@ -135,6 +151,11 @@ def validate(answer: AgentAnswer | str | dict[str, Any], evidence: dict[str, Any
 
 def _check_claim(claim: Claim, evidence: dict[str, Any]) -> list[str]:
     reasons: list[str] = []
+    has_expr = any(source.expr for source in claim.sources)
+    if claim.value is None and claim.quote is None and not has_expr:
+        return [f"«{claim.statement}»: нет value или quote для проверки"]
+
+    quote_ok = False
     for source in claim.sources:
         if source.call_id not in evidence:
             reasons.append(f"источник '{source.call_id}' не найден среди вызовов")
@@ -158,9 +179,17 @@ def _check_claim(claim: Claim, evidence: dict[str, Any]) -> list[str]:
             except (ValueError, TypeError, ZeroDivisionError) as e:
                 reasons.append(f"ошибка формулы '{source.expr}': {e}")
                 continue
+            if not same_value(claim.value, actual):
+                reasons.append(f"«{claim.statement}»: ожидалось {claim.value!r}, в данных {actual!r}")
+            continue
 
         if claim.value is not None and not same_value(claim.value, actual):
             reasons.append(f"«{claim.statement}»: ожидалось {claim.value!r}, в данных {actual!r}")
+        if claim.quote is not None and quote_matches(claim.quote, actual):
+            quote_ok = True
+
+    if claim.quote is not None and not quote_ok:
+        reasons.append(f"«{claim.statement}»: цитата не найдена в источнике")
 
     if any(
         isinstance(evidence.get(source.call_id), dict) and evidence[source.call_id].get("truncated")

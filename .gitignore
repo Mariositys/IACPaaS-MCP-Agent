@@ -5,3 +5,4 @@ dist/
 build/
 traces/
 .iacpaas/catalog.json
+scripts/

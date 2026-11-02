@@ -4,7 +4,7 @@ MCP tool               -> операция IACPaaS
 list_inforesources     -> локальный каталог .iacpaas/catalog.json
 get_inforesource       -> GET    /api/data/export/user-item
 get_subgraph           -> GET    /api/data/export/user-item (start-target-concept-path, export-depth)
-count_graph            -> GET    /api/data/export/user-item + подсчёт по дереву
+count_graph            -> GET    /api/data/export/user-item + подсчет по дереву
 query_graph            -> GET    /api/data/export/user-item + поиск по дереву
 validate_resource      -> локально, модель InfoResourceDocument
 import_inforesource    -> POST   /api/data/import
@@ -56,8 +56,8 @@ async def client_lifespan(server: FastMCP):
 
 mcp = FastMCP(
     "IACPaaS MCP",
-    instructions="Доступ к инфоресурсам IACPaaS: чтение графа, подсчёт, поиск, валидация и запись. "
-    "ИР адресуется путём в «Мой Фонд» без '<e-mail>/Мой Фонд/'.",
+    instructions="Доступ к инфоресурсам IACPaaS: чтение графа, подсчет, поиск, валидация и запись. "
+    "ИР адресуется путем в «Мой Фонд» без '<e-mail>/Мой Фонд/'.",
     lifespan=client_lifespan,
 )
 
@@ -129,7 +129,7 @@ def walk(
 async def export_from(
     ctx: Context, path: str, start: str, depth: int | None
 ) -> Iterator[tuple[dict[str, Any], str, str, int]] | ErrorResult:
-    """Экспортировать ИР от вершины start и вернуть обход её поддерева."""
+    """Экспортировать ИР от вершины start и вернуть обход ее поддерева."""
     doc = await client(ctx).export(path, start_concept_path=start or None, depth=depth)
     if isinstance(doc, ErrorResult):
         return doc

@@ -73,9 +73,9 @@ class Vertex(BaseModel):
         if (self.name is None) == (self.value is None):
             raise ValueError("у вершины должно быть ровно одно из полей name или value")
         if (self.value is not None) != (self.type == "ТЕРМИНАЛ-ЗНАЧЕНИЕ"):
-            raise ValueError("value задаётся только для ТЕРМИНАЛ-ЗНАЧЕНИЕ, у остальных типов - name")
+            raise ValueError("value задается только для ТЕРМИНАЛ-ЗНАЧЕНИЕ, у остальных типов - name")
         if self.valtype is not None and self.type not in TERMINAL_TYPES:
-            raise ValueError("valtype задаётся только для ТЕРМИНАЛ-СОРТ и ТЕРМИНАЛ-ЗНАЧЕНИЕ")
+            raise ValueError("valtype задается только для ТЕРМИНАЛ-СОРТ и ТЕРМИНАЛ-ЗНАЧЕНИЕ")
         if self.successors and self.type in TERMINAL_TYPES:
             raise ValueError("потомки бывают только у КОРЕНЬ и НЕТЕРМИНАЛ")
         if self.link is not None and self.original is not None:
@@ -113,7 +113,7 @@ class InfoResourceDocument(Vertex):
 
 
 # ---------- граф ----------
-# Подграф, подсчёт и запросы считаются локально по экспорту: отдельных методов в API нет
+# Подграф, подсчет и запросы считаются локально по экспорту: отдельных методов в API нет
 
 
 class GraphNode(BaseModel):
@@ -126,7 +126,7 @@ class GraphNode(BaseModel):
     concept_path: str = Field(description="Путь к вершине внутри ИР; нужен для update/delete")
     metaconcept_path: str = Field(description="Путь по меткам метавершин; нужен для update/delete")
     depth: int = Field(description="Расстояние от начальной вершины запроса")
-    link: str | None = Field(None, description="Куда ведёт ссылка, если вершина - ссылка")
+    link: str | None = Field(None, description="Куда ведет ссылка, если вершина - ссылка")
     original: str | None = Field(None, description="Оригинал, если вершина - зависимый клон")
 
 

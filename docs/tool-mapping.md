@@ -8,7 +8,7 @@
 | `list_inforesources` | аналога нет | локальный каталог `.iacpaas/catalog.json` |
 | `get_inforesource` | `GET /api/data/export/user-item` | сервер; `depth=0` для metadata |
 | `get_subgraph` | `GET /api/data/export/user-item` + локальный обход | сервер |
-| `count_graph` | `GET /api/data/export/user-item` + локальный подсчёт | сервер, **аналога в API нет** |
+| `count_graph` | `GET /api/data/export/user-item` + локальный подсчет | сервер, **аналога в API нет** |
 | `query_graph` | `GET /api/data/export/user-item` + локальный поиск | сервер, **аналога в API нет** |
 | `validate_resource` | — | локально, Pydantic |
 | `import_inforesource` | `POST /api/data/import` | сервер, требуется `confirm=true` |

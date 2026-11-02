@@ -43,7 +43,7 @@ class IacpaasClient:
         )
         if isinstance(data, ErrorResult):
             return data
-        # В OpenAPI ответ - object: либо сам ИР, либо обёртка ExportResult с JSON-строкой
+        # В OpenAPI ответ - object: либо сам ИР, либо обертка ExportResult с JSON-строкой
         if "result" in data and "success" in data:
             try:
                 result = data["result"]

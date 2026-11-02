@@ -3,7 +3,7 @@
 Автотесты отложены; ниже — проверки, которые можно выполнить вручную.
 Сценарии 1–2 не требуют доступа к IACPaaS, остальные требуют ключ или логин.
 
-## 1. Сервер поднимается и отдаёт тулзы
+## 1. Сервер поднимается и отдает тулзы
 
 ```powershell
 uv run iacpaas-mcp --version
@@ -26,15 +26,15 @@ Copy-Item .iacpaas/catalog.example.json .iacpaas/catalog.json
 
 ## 3. Чтение ИР
 
-Вызвать `get_inforesource` с реальным путём и `format="metadata"`, затем `format="json"`.
+Вызвать `get_inforesource` с реальным путем и `format="metadata"`, затем `format="json"`.
 
 Ожидается: `InfoResourceDocument` с `title`, `path`, `ontology` и корнем.
 Неверный путь — `kind="not_found"`, в тексте ошибки могут быть кандидаты из каталога.
 
-## 4. Подграф, подсчёт и поиск
+## 4. Подграф, подсчет и поиск
 
 Вызвать `get_subgraph` с `path`, `start` и `depth=2`; затем `count_graph` и
-`query_graph` с тем же путём.
+`query_graph` с тем же путем.
 
 Ожидается: у вершин канонический `concept_path`; `Subgraph.path` и `QueryResult.path`
 содержат путь ИР; при превышении `limit` стоит `truncated=true`.
@@ -88,3 +88,23 @@ uv run iacpaas-agent --replay traces/run.jsonl
 - «Сколько вершин в ИР «Пример»?» — вызов `count_graph`.
 
 В этом режиме доступны только read-only тулзы; валидатор ответа не применяется.
+
+## 11. Текстовый факт без числа
+
+Спросить: «Что сказано в описании ИР «Пример»?»
+
+Ожидается: в claim есть `quote`, которая дословно встречается в поле `/description`
+результата тулза. Если модель придумала цитату или не указала ни `value`, ни `quote`,
+валидатор отправляет ответ на repair, затем в fail-safe.
+
+## 12. Диагностика чтения
+
+```powershell
+uv run python scripts/p0_check.py "папка/Имя ИР"
+```
+
+Скрипт последовательно вызывает `list_inforesources`, `get_inforesource` (metadata и json),
+`get_subgraph`, `count_graph`, `query_graph` и печатает результат или полный текст ошибки.
+
+Если `get_inforesource` вернул `ERROR kind=validation`, скопируйте текст ошибки:
+это несовпадение реального экспорта с моделью `InfoResourceDocument`.

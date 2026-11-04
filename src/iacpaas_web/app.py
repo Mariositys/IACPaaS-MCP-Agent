@@ -10,7 +10,6 @@ from pydantic import BaseModel, Field, field_validator
 
 from iacpaas_agent.agent import MODEL_NAME, run_agent
 from iacpaas_agent.prompts import PROMPT_VERSION
-from iacpaas_agent.trace import TRACE_VERSION
 from iacpaas_mcp.models import ErrorResult
 from iacpaas_mcp.server import read_catalog
 
@@ -77,6 +76,4 @@ async def chat(request: ChatRequest) -> Any:
             )
         return JSONResponse(status_code=500, content={"error": message, "kind": "platform"})
 
-    result["version"] = TRACE_VERSION
-    result["prompt_version"] = PROMPT_VERSION
     return result

@@ -6,7 +6,6 @@ get_inforesource       -> GET    /api/data/export/user-item
 get_subgraph           -> GET    /api/data/export/user-item (start-target-concept-path, export-depth)
 count_graph            -> GET    /api/data/export/user-item + подсчет по дереву
 query_graph            -> GET    /api/data/export/user-item + поиск по дереву
-validate_resource      -> локально, модель InfoResourceDocument
 import_inforesource    -> POST   /api/data/import
 update_vertex          -> PUT    /api/data/update
 delete_inforesource    -> DELETE /api/data/delete
@@ -40,8 +39,6 @@ from .models import (
     OperationResult,
     QueryResult,
     Subgraph,
-    ValidationIssue,
-    ValidationReport,
 )
 
 
@@ -265,27 +262,6 @@ async def query_graph(
     return QueryResult(
         path=path, query=query, matches=matches[:limit], total=len(matches), truncated=len(matches) > limit
     )
-
-
-# ---------- control ----------
-
-
-@mcp.tool(annotations={"readOnlyHint": True}, tags={"control"})
-async def validate_resource(payload: dict[str, Any] | str) -> ValidationReport:
-    """Проверить JSON ИР в универсальном формате теми же правилами, что и перед импортом."""
-    if isinstance(payload, str):
-        try:
-            payload = json.loads(payload)
-        except json.JSONDecodeError as e:
-            return ValidationReport(valid=False, errors=[ValidationIssue(pointer="", message=f"Невалидный JSON: {e}")])
-    try:
-        InfoResourceDocument.model_validate(payload)
-    except ValidationError as e:
-        issues = [
-            ValidationIssue(pointer="".join(f"/{p}" for p in err["loc"]), message=err["msg"]) for err in e.errors()
-        ]
-        return ValidationReport(valid=False, errors=issues)
-    return ValidationReport(valid=True)
 
 
 # ---------- write ----------

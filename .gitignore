@@ -1,8 +1,9 @@
 .venv/
 __pycache__/
+.ruff_cache/
 *.py[cod]
 dist/
 build/
-traces/
+examples/
 .iacpaas/catalog.json
 scripts/

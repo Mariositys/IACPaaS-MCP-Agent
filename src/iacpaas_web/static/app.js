@@ -90,31 +90,6 @@ function renderClaims(claims, calls) {
   return details;
 }
 
-function downloadTrace(data) {
-  const blob = new Blob([JSON.stringify(data) + "\n"], { type: "application/json" });
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = `trace-${Date.now()}.jsonl`;
-  link.click();
-  URL.revokeObjectURL(link.href);
-}
-
-function renderTrace(data) {
-  const details = h("details", "trace");
-  details.append(h("summary", null, `Трасса (${data.calls.length} вызовов)`));
-  for (const call of data.calls) {
-    const block = h("div", "trace-call");
-    block.append(h("div", "trace-title", `${call.tool} · ${call.call_id}`));
-    block.append(h("pre", null, JSON.stringify({ args: call.args, result: call.result }, null, 2)));
-    details.append(block);
-  }
-  const download = h("button", "ghost small", "Скачать JSONL");
-  download.type = "button";
-  download.addEventListener("click", () => downloadTrace(data));
-  details.append(download);
-  return details;
-}
-
 function renderAnswer(data) {
   const row = h("div", "row agent");
   const bubble = h("div", "bubble");
@@ -133,9 +108,6 @@ function renderAnswer(data) {
   if (answer.claims && answer.claims.length) {
     bubble.append(renderClaims(answer.claims, data.calls));
   }
-  if (data.calls && data.calls.length) {
-    bubble.append(renderTrace(data));
-  }
   if (data.verdict && !data.verdict.ok && data.verdict.reasons && data.verdict.reasons.length) {
     const reasons = h("div", "claim");
     reasons.append(h("div", "claim-statement", "Причины отказа валидатора"));
@@ -145,7 +117,7 @@ function renderAnswer(data) {
     bubble.append(reasons);
   } else if (data.reasons && data.reasons.length) {
     const reasons = h("div", "claim");
-    reasons.append(h("div", "claim-statement", "Почему ответ не подтверждён"));
+    reasons.append(h("div", "claim-statement", "Почему ответ не подтвержден"));
     for (const reason of data.reasons) {
       reasons.append(h("div", "claim-meta", reason));
     }

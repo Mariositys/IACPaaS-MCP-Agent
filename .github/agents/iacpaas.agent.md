@@ -7,7 +7,6 @@ tools:
   - iacpaas/get_subgraph
   - iacpaas/count_graph
   - iacpaas/query_graph
-  - iacpaas/validate_resource
 ---
 
 Ты — агент по инфоресурсам IACPaaS.

@@ -10,7 +10,6 @@
 | `get_subgraph` | `GET /api/data/export/user-item` + локальный обход | сервер |
 | `count_graph` | `GET /api/data/export/user-item` + локальный подсчет | сервер, **аналога в API нет** |
 | `query_graph` | `GET /api/data/export/user-item` + локальный поиск | сервер, **аналога в API нет** |
-| `validate_resource` | — | локально, Pydantic |
 | `import_inforesource` | `POST /api/data/import` | сервер, требуется `confirm=true` |
 | `update_vertex` | `PUT /api/data/update` | сервер, требуется `confirm=true` |
 | `delete_inforesource` | `DELETE /api/data/delete` | сервер, требуется `confirm=true` |

@@ -15,11 +15,11 @@ from .config import MAX_DEPTH, MAX_LIMIT
 VertexType = Literal["КОРЕНЬ", "НЕТЕРМИНАЛ", "ТЕРМИНАЛ-СОРТ", "ТЕРМИНАЛ-ЗНАЧЕНИЕ"]
 ValType = Literal["STRING", "INTEGER", "REAL", "BOOLEAN", "DATE", "BLOB"]
 DeleteMode = Literal["deleteIR", "trashIR", "clearIR", "deleteSubGraph", "clearSubGraph"]
-# float нужен для REAL (по документации это JSON-число), хотя target-ir.schema.json его не допускает
+# float нужен для REAL (по документации это JSON-число), хотя официальная схема IACPaaS его не допускает
 VertexValue = bool | int | float | str
 
 TERMINAL_TYPES = ("ТЕРМИНАЛ-СОРТ", "ТЕРМИНАЛ-ЗНАЧЕНИЕ")
-# Поля, которых нет в target-ir.schema.json (additionalProperties: false): при импорте не отправляем
+# Поля, которых нет в официальной схеме IACPaaS (additionalProperties: false): при импорте не отправляем
 NON_SCHEMA_FIELDS = {"id", "specifier", "restrictor"}
 
 IrPath = Annotated[
@@ -104,7 +104,7 @@ class InfoResourceDocument(Vertex):
     creation: str | None = Field(None, description="Дата создания (только при экспорте)")
 
     def to_import_dict(self) -> dict[str, Any]:
-        """JSON для импорта в виде target-ir.schema.json: без None, id и пустого context."""
+        """JSON для импорта в формате IACPaaS: без None, id и пустого context."""
         data = _schema_dict(self.model_dump(mode="json", exclude_none=True))
         # context есть в документации, но не в схеме: отправляем, только если он задан
         if not data.get("context"):
@@ -160,17 +160,7 @@ class QueryResult(BaseModel):
     truncated: bool = False
 
 
-# ---------- валидация и запись ----------
-
-
-class ValidationIssue(BaseModel):
-    pointer: str = Field(description="JSON Pointer до ошибочного места, например '/successors/0/type'")
-    message: str
-
-
-class ValidationReport(BaseModel):
-    valid: bool
-    errors: list[ValidationIssue] = Field(default_factory=list)
+# ---------- запись ----------
 
 
 class OperationResult(BaseModel):

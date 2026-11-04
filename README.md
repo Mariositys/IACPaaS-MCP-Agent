@@ -37,15 +37,6 @@ API IACPaaS не умеет перечислять ресурсы, поэтом�
 Copy-Item .iacpaas/catalog.example.json .iacpaas/catalog.json
 ```
 
-## Проверка чтения
-
-```powershell
-uv run python scripts/p0_check.py "папка/Имя ИР"
-```
-
-Скрипт вызывает все read-only тулзы и печатает результаты или полные тексты ошибок.
-Нужны только учётные данные IACPaaS, LLM не используется.
-
 ## MCP Inspector
 
 Браузерный интерфейс для тулзов, ключи IACPaaS не нужны для запуска:
@@ -54,18 +45,8 @@ uv run python scripts/p0_check.py "папка/Имя ИР"
 npx -y @modelcontextprotocol/inspector uv run iacpaas-mcp
 ```
 
-В Inspector видно 9 тулзов и их схемы. `list_inforesources` работает по локальному
-каталогу, `validate_resource` — локально; остальные чтения без ключей вернут `kind="auth"`.
-
-## Демо без ключей
-
-Проверить валидатор и replay на готовой трассе:
-
-```powershell
-uv run iacpaas-agent --replay examples/demo_trace.jsonl
-```
-
-Для `validate_resource` в Inspector используйте `examples/minimal-ir.json`.
+В Inspector видно 8 тулзов и их схемы. `list_inforesources` работает по локальному
+каталогу; остальные чтения без ключей вернут `kind="auth"`.
 
 ## Агент
 
@@ -80,15 +61,6 @@ uv run iacpaas-agent "Сколько вершин в ИР «Пример»?"
 Ответ агента проходит детерминированную проверку: claims без источника
 или без проверяемого `value`/`quote` отклоняются, после двух починок выдается fail-safe.
 
-Трасса и replay:
-
-```powershell
-uv run iacpaas-agent "Сколько вершин в ИР «Пример»?" --trace traces/run.jsonl
-uv run iacpaas-agent --replay traces/run.jsonl
-```
-
-Replay пересчитывает проверку по записанным вызовам и ответу, без LLM и сети.
-
 ## Веб-чат
 
 ```powershell
@@ -96,10 +68,10 @@ uv run iacpaas-web
 ```
 
 Откройте `http://127.0.0.1:8000`. Интерфейс показывает каталог ИР, ответ агента,
-бейдж проверки, источники claims и трассу вызовов; трассу можно скачать в JSONL.
+бейдж проверки и источники claims.
 
 Чат работает в read-only режиме и без авторизации пользователей: сервер слушает
-`127.0.0.1`. Для ответов нужен ключ модели; без ключей IACPaaS чтение вернёт `kind="auth"`.
+`127.0.0.1`. Для ответов нужен ключ модели; без ключей IACPaaS чтение вернет `kind="auth"`.
 В модель передаются последние 3 хода; их `call_id` переименовываются в `h1_...`, `h2_...`
 и остаются доступны валидатору.
 
@@ -119,7 +91,7 @@ uv run iacpaas-web
 ## Структура
 
 - `src/iacpaas_mcp` — MCP-сервер;
-- `src/iacpaas_agent` — LangGraph-агент, валидатор и трасса;
+- `src/iacpaas_agent` — LangGraph-агент и валидатор;
 - `src/iacpaas_web` — браузерный чат на FastAPI;
 - `docs` — архитектура, сценарии, соответствие API и решения;
 - `.vscode/mcp.json`, `.github/agents/iacpaas.agent.md` — режим VS Code.

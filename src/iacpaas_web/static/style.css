@@ -147,9 +147,6 @@ pre {
   font-size: 12px;
 }
 
-.trace-call { margin-top: 10px; }
-.trace-title { margin-bottom: 4px; font-size: 12px; font-weight: 600; }
-.small { margin-top: 8px; padding: 6px 10px; font-size: 12px; }
 .empty { max-width: 700px; margin: auto; padding: 40px 16px; text-align: center; color: var(--muted); }
 .empty h1 { margin: 0 0 8px; font-size: 24px; color: var(--text); }
 .chips { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 18px; }

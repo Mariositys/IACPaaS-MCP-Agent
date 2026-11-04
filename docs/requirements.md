@@ -2,17 +2,17 @@
 
 | Требование | Где реализовано | Как проверить |
 |---|---|---|
-| Валидация ответов нейросети | `src/iacpaas_agent/schemas.py`, `src/iacpaas_agent/validator.py`, узел `validate` | сценарии 7–8: неверное число и выдуманный путь отклоняются |
-| Детерминированность, `temperature=0` | `src/iacpaas_agent/agent.py`, `make_model()`; `PROMPT_VERSION` в трассе | повторный replay дает тот же вердикт |
+| Валидация ответов нейросети | `src/iacpaas_agent/schemas.py`, `src/iacpaas_agent/validator.py`, узел `validate` | сценарий 7: неверное число и выдуманный путь отклоняются |
+| Детерминированность, `temperature=0` | `src/iacpaas_agent/agent.py`, `make_model()` | температура зафиксирована; валидатор не использует случайность |
 | Не использовать внутренние знания | `Claim.sources` обязателен; проверка `call_id` и JSON Pointer; ответ без вызовов тулзов отклоняется | сценарий 7, ответ без источника |
 | Сжатие ответов | не реализовано, отложено до v2 | — |
 | Типизированные входы и выходы тулзов | `src/iacpaas_mcp/models.py`, аннотации `server.py` | схемы в `list_tools()` |
 | Разделение read и write | теги и `readOnlyHint`/`destructiveHint` | MCP Inspector |
 | Подтверждение мутаций | `confirm=false` → `OperationPreview` | сценарий 6 |
 | Диагностируемые ошибки | `ErrorResult` с `kind` | сценарии 2, 5, 6 |
-| Режимы запуска | `.vscode/mcp.json`, `.github/agents/iacpaas.agent.md`, CLI, веб-чат | сценарии 7, 10, 13 |
-| Браузерный чат | `src/iacpaas_web/app.py`, `index.html` | сценарий 13: ответ, источники, трасса, read-only |
-| История диалога | `run_agent(..., history=...)`, `h1_...` ID | сценарий 14: follow-up проверяется по общему evidence |
+| Режимы запуска | `.vscode/mcp.json`, `.github/agents/iacpaas.agent.md`, CLI, веб-чат | сценарии 7, 9, 11 |
+| Браузерный чат | `src/iacpaas_web/app.py`, `index.html` | сценарий 11: ответ, источники, read-only |
+| История диалога | `run_agent(..., history=...)`, `h1_...` ID | сценарий 12: follow-up проверяется по общему evidence |
 | Документирование соответствия API | `docs/tool-mapping.md` | таблица тулз → HTTP |
 
 ## Что именно гарантирует валидатор

@@ -20,7 +20,7 @@ flowchart LR
 - **VS Code** — MCP-сервер подключается из `.vscode/mcp.json`, поведение задает
   `.github/agents/iacpaas.agent.md`. Доступны только read-only тулзы.
 - **Standalone CLI** — `iacpaas-agent`: LangGraph-цикл, структурированный ответ,
-  детерминированная проверка, трасса и replay.
+  детерминированная проверка.
 - **Веб-чат** — `iacpaas-web`: FastAPI и одна HTML-страница, тот же `run_agent`
   в read-only режиме. В модель передаются последние 3 хода; evidence прошлых
   вызовов добавляется в общий пул с ID `h1_...`, `h2_...`.
@@ -53,12 +53,11 @@ flowchart LR
 | `src/iacpaas_agent/agent.py` | LangGraph-цикл, обертки MCP-тулзов, модель |
 | `src/iacpaas_agent/schemas.py` | `AgentAnswer`, `Claim`, `Source` |
 | `src/iacpaas_agent/validator.py` | детерминированная проверка ответа |
-| `src/iacpaas_agent/trace.py` | запись JSONL и replay без сети |
 | `src/iacpaas_agent/prompts.py` | промпты и `PROMPT_VERSION` |
 | `src/iacpaas_web/app.py` | FastAPI: чат, каталог, health |
 | `src/iacpaas_web/index.html` | разметка чата |
-| `src/iacpaas_web/static/style.css` | тёмная тема |
-| `src/iacpaas_web/static/app.js` | логика чата, источники и трасса |
+| `src/iacpaas_web/static/style.css` | темная тема |
+| `src/iacpaas_web/static/app.js` | логика чата и источники |
 
 ## Гарантии и границы
 

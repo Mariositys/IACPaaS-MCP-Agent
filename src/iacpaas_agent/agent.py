@@ -7,6 +7,7 @@ from typing import Annotated, Any, TypedDict
 
 from fastmcp import Client
 from fastmcp.client.transports import StdioTransport
+from langchain_core.exceptions import OutputParserException
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import StructuredTool
 from langchain_openai import ChatOpenAI
@@ -184,14 +185,27 @@ def build_graph(model: ChatOpenAI, tools: list[StructuredTool]):
             evidence=json.dumps(state["evidence"], ensure_ascii=False, indent=2, default=str),
             reasons=reasons,
         )
-        answer = await structured_model.ainvoke([SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=prompt)])
-        if isinstance(answer, dict):
-            answer = AgentAnswer.model_validate(answer)
-        return {"answer": answer, "attempts": state["attempts"] + 1}
+        try:
+            answer = await structured_model.ainvoke(
+                [SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=prompt)]
+            )
+            if isinstance(answer, str):
+                answer = AgentAnswer.model_validate_json(answer)
+            elif isinstance(answer, dict):
+                answer = AgentAnswer.model_validate(answer)
+            elif not isinstance(answer, AgentAnswer):
+                raise TypeError(f"модель вернула {type(answer).__name__}, а не AgentAnswer")
+        except (OutputParserException, ValueError, TypeError) as e:
+            reason = f"Не удалось разобрать ответ модели: {str(e)[:1000]}"
+            return {"answer": None, "reasons": [reason], "attempts": state["attempts"] + 1}
+        return {"answer": answer, "reasons": [], "attempts": state["attempts"] + 1}
 
     def validate_node(state: AgentState) -> dict[str, Any]:
+        if state["answer"] is None:
+            verdict = Verdict(ok=False, reasons=state["reasons"] or ["ответ модели не удалось разобрать"])
+            return {"verdict": verdict, "reasons": verdict.reasons, "final": ""}
         verdict = validate(state["answer"], state["evidence"])
-        if verdict.ok and state["answer"] is not None:
+        if verdict.ok:
             return {"verdict": verdict, "reasons": [], "final": state["answer"].answer}
         return {"verdict": verdict, "reasons": verdict.reasons}
 

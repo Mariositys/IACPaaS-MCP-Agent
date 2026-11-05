@@ -39,7 +39,7 @@ async def index() -> str:
 
 @app.get("/api/health")
 async def health() -> dict[str, Any]:
-    return {"ok": True, "model": MODEL_NAME, "prompt_version": PROMPT_VERSION}
+    return {"ok": True, "model": MODEL_NAME or "не задана", "prompt_version": PROMPT_VERSION}
 
 
 @app.get("/api/catalog")
@@ -66,11 +66,15 @@ async def chat(request: ChatRequest) -> Any:
         result = await run_agent(request.question, read_only=True, history=request.history)
     except Exception as e:  # noqa: BLE001 - ошибка показывается в чате
         message = str(e)
-        if "credentials" in message.casefold() or "api_key" in message.casefold():
+        lower = message.casefold()
+        if "credentials" in lower or "api_key" in lower or "iacpaas_agent" in lower:
             return JSONResponse(
                 status_code=500,
                 content={
-                    "error": "Не задан ключ модели (OPENAI_API_KEY или IACPAAS_AGENT_API_KEY).",
+                    "error": (
+                        "Не заданы параметры модели: IACPAAS_AGENT_API_KEY, "
+                        "IACPAAS_AGENT_MODEL, IACPAAS_AGENT_BASE_URL."
+                    ),
                     "kind": "auth",
                 },
             )

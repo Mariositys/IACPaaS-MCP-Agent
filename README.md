@@ -57,16 +57,28 @@ npx -y @modelcontextprotocol/inspector uv run iacpaas-mcp
 
 ## Агент
 
-Нужен ключ модели: `OPENAI_API_KEY` или `IACPAAS_AGENT_API_KEY`.
+Нужны три переменные:
+
+- `IACPAAS_AGENT_API_KEY`;
+- `IACPAAS_AGENT_MODEL`;
+- `IACPAAS_AGENT_BASE_URL`.
+
+Пример для Polza:
+
+```text
+IACPAAS_AGENT_API_KEY=...
+IACPAAS_AGENT_MODEL=...
+IACPAAS_AGENT_BASE_URL=https://polza.ai/api/v1
+```
 
 ```powershell
 uv run iacpaas-agent "Сколько вершин в ИР «Пример»?"
 ```
 
-Модель по умолчанию - `gpt-4o-mini`; изменить можно через `IACPAAS_AGENT_MODEL`,
-свой OpenAI-совместимый endpoint - через `IACPAAS_AGENT_BASE_URL`.
-Ответ агента проходит детерминированную проверку: claims без источника
-или без проверяемого `value`/`quote` отклоняются, после двух починок выдается fail-safe.
+Значений по умолчанию нет: если хотя бы одна переменная не задана, агент завершится
+с ошибкой со списком отсутствующих. Ответ агента проходит детерминированную проверку:
+claims без источника или без проверяемого `value`/`quote` отклоняются, после двух
+починок выдается fail-safe.
 
 ## Веб-чат
 
@@ -78,7 +90,8 @@ uv run iacpaas-web
 бейдж проверки и источники claims.
 
 Чат работает в read-only режиме и без авторизации пользователей: сервер слушает
-`127.0.0.1`. Для ответов нужен ключ модели; без ключей IACPaaS чтение вернет `kind="auth"`.
+`127.0.0.1`. Для ответов нужны `IACPAAS_AGENT_API_KEY`, `IACPAAS_AGENT_MODEL` и
+`IACPAAS_AGENT_BASE_URL`; без ключей IACPaaS чтение вернет `kind="auth"`.
 В модель передаются последние 3 хода; их `call_id` переименовываются в `h1_...`, `h2_...`
 и остаются доступны валидатору.
 

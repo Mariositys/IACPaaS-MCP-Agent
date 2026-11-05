@@ -21,9 +21,9 @@ from .validator import Verdict, fail_safe_answer, validate
 
 load_dotenv()
 
-MODEL_NAME = os.getenv("IACPAAS_AGENT_MODEL", "gpt-4o-mini")
+MODEL_NAME = os.getenv("IACPAAS_AGENT_MODEL")
 BASE_URL = os.getenv("IACPAAS_AGENT_BASE_URL")
-API_KEY = os.getenv("IACPAAS_AGENT_API_KEY") or os.getenv("OPENAI_API_KEY")
+API_KEY = os.getenv("IACPAAS_AGENT_API_KEY")
 
 MAX_STEPS = 8
 MAX_ATTEMPTS = 3
@@ -45,12 +45,18 @@ class AgentState(TypedDict):
 
 
 def make_model() -> ChatOpenAI:
-    kwargs: dict[str, Any] = {"model": MODEL_NAME, "temperature": 0}
-    if BASE_URL:
-        kwargs["base_url"] = BASE_URL
-    if API_KEY:
-        kwargs["api_key"] = API_KEY
-    return ChatOpenAI(**kwargs)
+    missing = [
+        name
+        for name, value in (
+            ("IACPAAS_AGENT_API_KEY", API_KEY),
+            ("IACPAAS_AGENT_MODEL", MODEL_NAME),
+            ("IACPAAS_AGENT_BASE_URL", BASE_URL),
+        )
+        if not value
+    ]
+    if missing:
+        raise RuntimeError("Задайте " + ", ".join(missing))
+    return ChatOpenAI(model=MODEL_NAME, base_url=BASE_URL, api_key=API_KEY, temperature=0)
 
 
 def unwrap(result: Any) -> Any:

@@ -55,7 +55,9 @@ Copy-Item .iacpaas/catalog.example.json .iacpaas/catalog.json
 ## 7. Агент: ответ по данным
 
 ```powershell
-$env:OPENAI_API_KEY = "..."
+$env:IACPAAS_AGENT_API_KEY = "..."
+$env:IACPAAS_AGENT_MODEL = "..."
+$env:IACPAAS_AGENT_BASE_URL = "https://polza.ai/api/v1"
 $env:IACPAAS_API_KEY = "..."
 uv run iacpaas-agent "Сколько вершин в ИР «Пример»?"
 ```

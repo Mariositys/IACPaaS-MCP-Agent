@@ -5,6 +5,7 @@ import os
 import sys
 from typing import Annotated, Any, TypedDict
 
+from dotenv import load_dotenv
 from fastmcp import Client
 from fastmcp.client.transports import StdioTransport
 from langchain_core.exceptions import OutputParserException
@@ -17,6 +18,8 @@ from langgraph.graph.message import add_messages
 from .prompts import ANSWER_PROMPT, GATHER_PROMPT, SYSTEM_PROMPT
 from .schemas import AgentAnswer
 from .validator import Verdict, fail_safe_answer, validate
+
+load_dotenv()
 
 MODEL_NAME = os.getenv("IACPAAS_AGENT_MODEL", "gpt-4o-mini")
 BASE_URL = os.getenv("IACPAAS_AGENT_BASE_URL")

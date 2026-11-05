@@ -20,11 +20,18 @@ uv run iacpaas-mcp --transport http
 ## Авторизация
 
 Базовый URL захардкожен: `https://iacpaas.dvo.ru`.
-Учетные данные берутся из переменных окружения:
+Скопируйте шаблон и заполните `.env`:
 
-- `IACPAAS_API_KEY` — ключ администратора;
+```powershell
+Copy-Item .env.example .env
+```
+
+Учетные данные берутся из `.env` или переменных окружения (переменные приоритетнее):
+
+- `IACPAAS_API_KEY` - ключ администратора;
 - или `IACPAAS_USERNAME` и `IACPAAS_PASSWORD`.
 
+`.env` не коммитится. 
 Запись по умолчанию выключена; включить: `IACPAAS_ALLOW_WRITE=true`.
 Write-тулзы без `confirm=true` возвращают план операции и ничего не меняют.
 
@@ -56,8 +63,8 @@ npx -y @modelcontextprotocol/inspector uv run iacpaas-mcp
 uv run iacpaas-agent "Сколько вершин в ИР «Пример»?"
 ```
 
-Модель по умолчанию — `gpt-4o-mini`; изменить можно через `IACPAAS_AGENT_MODEL`,
-свой OpenAI-совместимый endpoint — через `IACPAAS_AGENT_BASE_URL`.
+Модель по умолчанию - `gpt-4o-mini`; изменить можно через `IACPAAS_AGENT_MODEL`,
+свой OpenAI-совместимый endpoint - через `IACPAAS_AGENT_BASE_URL`.
 Ответ агента проходит детерминированную проверку: claims без источника
 или без проверяемого `value`/`quote` отклоняются, после двух починок выдается fail-safe.
 
@@ -90,19 +97,19 @@ uv run iacpaas-web
 
 ## Структура
 
-- `src/iacpaas_mcp` — MCP-сервер;
-- `src/iacpaas_agent` — LangGraph-агент и валидатор;
-- `src/iacpaas_web` — браузерный чат на FastAPI;
-- `docs` — архитектура, сценарии, соответствие API и решения;
-- `.vscode/mcp.json`, `.github/agents/iacpaas.agent.md` — режим VS Code.
+- `src/iacpaas_mcp` - MCP-сервер;
+- `src/iacpaas_agent` - LangGraph-агент и валидатор;
+- `src/iacpaas_web` - браузерный чат на FastAPI;
+- `docs` - архитектура, сценарии, соответствие API и решения;
+- `.vscode/mcp.json`, `.github/agents/iacpaas.agent.md` - режим VS Code.
 
 ## Документация
 
-- `docs/architecture.md` — схема режимов и цикла агента;
-- `docs/scenarios.md` — ручные сценарии проверки;
-- `docs/tool-mapping.md` — MCP-тулз → операция IACPaaS;
-- `docs/requirements.md` — требование → реализация → проверка;
-- `docs/decisions.md` — принятые решения и ограничения.
+- `docs/architecture.md` - схема режимов и цикла агента;
+- `docs/scenarios.md` - ручные сценарии проверки;
+- `docs/tool-mapping.md` - MCP-тулз -> операция IACPaaS;
+- `docs/requirements.md` - требование -> реализация -> проверка;
+- `docs/decisions.md` - принятые решения и ограничения.
 
 ## Статус
 

@@ -1,7 +1,11 @@
-"""Настройки прототипа: базовый URL захардкожен, секреты берем из окружения."""
+"""Настройки прототипа: базовый URL захардкожен, секреты из .env или окружения."""
 
 import os
 from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 BASE_URL = "https://iacpaas.dvo.ru"
 TIMEOUT = 60

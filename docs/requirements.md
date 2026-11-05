@@ -14,6 +14,7 @@
 | Режимы запуска | `.vscode/mcp.json`, `.github/agents/iacpaas.agent.md`, CLI, веб-чат | сценарии 7, 9, 11 |
 | Браузерный чат | `src/iacpaas_web/app.py`, `index.html` | сценарий 11: ответ, источники, read-only |
 | История диалога | `run_agent(..., history=...)`, `h1_...` ID | сценарий 12: follow-up проверяется по общему evidence |
+| Prompt caching | стабильный префикс в `agent.py`; `cache_control` для Claude | сценарий 13: `cached_tokens` в usage Polza |
 | Документирование соответствия API | `docs/tool-mapping.md` | таблица тулз -> HTTP |
 
 ## Что именно гарантирует валидатор

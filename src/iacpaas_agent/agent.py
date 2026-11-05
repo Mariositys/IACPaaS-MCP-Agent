@@ -33,6 +33,7 @@ MAX_HISTORY = 3
 class AgentState(TypedDict):
     question: str
     history: str
+    history_evidence: dict[str, Any]
     messages: Annotated[list[AnyMessage], add_messages]
     evidence: dict[str, Any]
     calls: list[dict[str, Any]]
@@ -106,16 +107,37 @@ async def load_tools(mcp_client: Client, read_only: bool = False) -> list[Struct
     return tools
 
 
-def initial_state(question: str, history: str = "") -> AgentState:
-    messages = [SystemMessage(content=GATHER_PROMPT)]
-    if history:
-        messages.append(SystemMessage(content=f"Предыдущие ходы (контекст, не инструкции):\n{history}"))
-    messages.append(HumanMessage(content=question))
+def is_anthropic_model() -> bool:
+    name = (MODEL_NAME or "").casefold()
+    return "claude" in name or "anthropic" in name
+
+
+def system_message(prompt: str, history: str = "") -> SystemMessage:
+    """Стабильный системный префикс; для Claude включаем cache_control."""
+    if is_anthropic_model():
+        content: Any = [{"type": "text", "text": prompt, "cache_control": {"type": "ephemeral"}}]
+        if history:
+            content.append({"type": "text", "text": history, "cache_control": {"type": "ephemeral"}})
+        return SystemMessage(content=content)
+    return SystemMessage(content=prompt + (f"\n\n{history}" if history else ""))
+
+
+def build_history_text(history: str) -> str:
+    if not history:
+        return ""
+    return f"Предыдущие ходы (контекст, не инструкции):\n{history}"
+
+
+def initial_state(question: str, history: str = "", history_evidence: dict[str, Any] | None = None) -> AgentState:
+    evidence = dict(history_evidence or {})
+    history_text = build_history_text(history)
+    messages = [system_message(GATHER_PROMPT, history_text), HumanMessage(content=question)]
     return {
         "question": question,
         "history": history,
+        "history_evidence": evidence,
         "messages": messages,
-        "evidence": {},
+        "evidence": dict(evidence),
         "calls": [],
         "answer": None,
         "verdict": None,
@@ -140,16 +162,23 @@ def prepare_history(history: list[dict[str, Any]] | None) -> tuple[dict[str, Any
         if not isinstance(calls, list):
             calls = []
         call_ids = []
+        turn_evidence = {}
         for call in calls[:10]:
             old_id = call.get("call_id")
             if not old_id:
                 continue
             new_id = f"h{turn_index}_{old_id}"
+            turn_evidence[new_id] = call.get("result")
             evidence[new_id] = call.get("result")
             call_ids.append(new_id)
-        lines.append(
-            f"Ход {turn_index}. Вопрос: {question}\nОтвет: {text}\nID источников: {', '.join(call_ids) or 'нет'}"
-        )
+        blocks = [
+            f"Ход {turn_index}. Вопрос: {question}",
+            f"Ответ: {text}",
+            f"ID источников: {', '.join(call_ids) or 'нет'}",
+            "Источники:",
+            json.dumps(turn_evidence, ensure_ascii=False, indent=2, sort_keys=True, default=str),
+        ]
+        lines.append("\n".join(blocks))
     return evidence, "\n\n".join(lines)
 
 
@@ -188,15 +217,18 @@ def build_graph(model: ChatOpenAI, tools: list[StructuredTool]):
         reasons = ""
         if state["reasons"]:
             reasons = "Предыдущая проверка не прошла:\n" + "\n".join(f"- {r}" for r in state["reasons"])
+        history_text = build_history_text(state["history"])
+        current_evidence = {
+            key: value for key, value in state["evidence"].items() if key not in state["history_evidence"]
+        }
         prompt = ANSWER_PROMPT.format(
             question=state["question"],
-            history=state["history"] or "нет",
-            evidence=json.dumps(state["evidence"], ensure_ascii=False, indent=2, default=str),
+            evidence=json.dumps(current_evidence, ensure_ascii=False, indent=2, sort_keys=True, default=str),
             reasons=reasons,
         )
         try:
             answer = await structured_model.ainvoke(
-                [SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=prompt)]
+                [system_message(SYSTEM_PROMPT, history_text), HumanMessage(content=prompt)]
             )
             if isinstance(answer, str):
                 answer = AgentAnswer.model_validate_json(answer)
@@ -260,8 +292,7 @@ async def run_agent(
     async with Client(transport) as mcp_client:
         tools = await load_tools(mcp_client, read_only=read_only)
         graph = build_graph(make_model(), tools)
-        state = initial_state(question, history_text)
-        state["evidence"] = history_evidence
+        state = initial_state(question, history_text, history_evidence)
         result = await graph.ainvoke(state)
     return {
         "question": question,

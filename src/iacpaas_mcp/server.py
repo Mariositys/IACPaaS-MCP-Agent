@@ -1,7 +1,6 @@
 """MCP-сервер IACPaaS: тулзы поверх API импорта-экспорта платформы.
 
 MCP tool               -> операция IACPaaS
-list_inforesources     -> локальный каталог .iacpaas/catalog.json
 get_inforesource       -> GET    /api/data/export/user-item
 get_subgraph           -> GET    /api/data/export/user-item (start-target-concept-path, export-depth)
 count_graph            -> GET    /api/data/export/user-item + подсчет по дереву
@@ -11,7 +10,6 @@ update_vertex          -> PUT    /api/data/update
 delete_inforesource    -> DELETE /api/data/delete
 """
 
-import json
 import re
 from collections.abc import Iterator
 from typing import Annotated, Any, Literal
@@ -21,9 +19,8 @@ from fastmcp.server.lifespan import lifespan
 from pydantic import Field, ValidationError
 
 from .client import IacpaasClient
-from .config import ALLOW_WRITE, CATALOG_PATH
+from .config import ALLOW_WRITE
 from .models import (
-    CatalogEntry,
     ConceptPath,
     DeleteMode,
     Depth,
@@ -70,24 +67,6 @@ def write_blocked() -> ErrorResult | None:
     if not ALLOW_WRITE:
         return ErrorResult(error="Запись запрещена (IACPAAS_ALLOW_WRITE=false)", kind="auth")
     return None
-
-
-def read_catalog() -> list[CatalogEntry] | ErrorResult:
-    if not CATALOG_PATH.exists():
-        return ErrorResult(error=f"Каталог {CATALOG_PATH} не найден", kind="not_found")
-    try:
-        raw = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
-        return [CatalogEntry.model_validate(item) for item in raw]
-    except (OSError, ValueError, TypeError, ValidationError) as e:
-        return ErrorResult(error=f"Не удалось прочитать каталог: {e}", kind="validation")
-
-
-def catalog_candidates(path: str) -> list[str]:
-    entries = read_catalog()
-    if isinstance(entries, ErrorResult):
-        return []
-    name = path.rsplit("/", 1)[-1].casefold()
-    return [entry.path for entry in entries if name in entry.path.casefold() or name in entry.title.casefold()][:5]
 
 
 # ---------- обход экспортированного дерева ----------
@@ -157,24 +136,6 @@ def to_node(vertex: dict[str, Any], concept_path: str, metaconcept_path: str, de
 
 
 @mcp.tool(annotations=READ, tags={"read"})
-def list_inforesources(query: str = "", limit: Limit = 50) -> list[CatalogEntry] | ErrorResult:
-    """Найти ИР в локальном каталоге .iacpaas/catalog.json по пути, названию или тегу."""
-    entries = read_catalog()
-    if isinstance(entries, ErrorResult):
-        return entries
-    needle = query.casefold().strip()
-    if needle:
-        entries = [
-            entry
-            for entry in entries
-            if needle in entry.path.casefold()
-            or needle in entry.title.casefold()
-            or any(needle in tag.casefold() for tag in entry.tags)
-        ]
-    return entries[:limit]
-
-
-@mcp.tool(annotations=READ, tags={"read"})
 async def get_inforesource(
     ctx: Context,
     path: IrPath,
@@ -185,10 +146,6 @@ async def get_inforesource(
     depth = 0 if format == "metadata" else None
     doc = await client(ctx).export(path, json_type, depth=depth)
     if isinstance(doc, ErrorResult):
-        if doc.kind == "not_found":
-            candidates = catalog_candidates(path)
-            if candidates:
-                doc.error += "; возможно: " + ", ".join(candidates)
         return doc
     try:
         return InfoResourceDocument.model_validate(doc)

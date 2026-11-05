@@ -182,10 +182,3 @@ ErrorKind = Literal["not_found", "auth", "platform", "timeout", "validation"]
 class ErrorResult(BaseModel):
     error: str
     kind: ErrorKind
-
-
-class CatalogEntry(BaseModel):
-    path: str = Field(description="Путь к ИР в «Мой Фонд»")
-    title: str
-    description: str | None = None
-    tags: list[str] = Field(default_factory=list)

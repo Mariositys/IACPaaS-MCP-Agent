@@ -5,7 +5,6 @@
 
 | MCP-тулз | IACPaaS | Реализация |
 |---|---|---|
-| `list_inforesources` | аналога нет | локальный каталог `.iacpaas/catalog.json` |
 | `get_inforesource` | `GET /api/data/export/user-item` | сервер; `depth=0` для metadata |
 | `get_subgraph` | `GET /api/data/export/user-item` + локальный обход | сервер |
 | `count_graph` | `GET /api/data/export/user-item` + локальный подсчет | сервер, **аналога в API нет** |
@@ -16,7 +15,7 @@
 
 ## Ограничения API
 
-- Эндпоинта «список ИР / поиск по фонду» нет, поэтому каталог локальный.
+- Эндпоинта «список ИР / поиск по фонду» нет, поэтому путь задает пользователь.
 - `count_graph`, `query_graph`, `get_subgraph` не являются методами платформы:
   они считаются по экспортированному дереву.
 - `export-depth` и `start-target-concept-path` передаются строками, как в OpenAPI.

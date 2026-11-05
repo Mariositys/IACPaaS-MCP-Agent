@@ -13,18 +13,17 @@
       <span id="model" class="pill">модель: …</span>
       <span id="prompt" class="pill">контракт: …</span>
       <span class="pill">temperature 0</span>
-      <span class="pill">запись: выкл.</span>
-      <button id="new-chat" class="ghost" type="button">Новый чат</button>
+      <span class="pill">история: SQLite</span>
     </div>
   </header>
 
   <div class="layout">
     <aside class="sidebar">
-      <label class="label" for="catalog-search">Каталог ИР</label>
-      <input id="catalog-search" type="search" placeholder="Поиск по названию или пути">
-      <div id="catalog-error" class="hint"></div>
-      <ul id="catalog-list" class="catalog"></ul>
-      <div class="sidebar-note">Клик по ИР вставит путь в поле вопроса. Каталог читается из <code>.iacpaas/catalog.json</code>.</div>
+      <div class="sidebar-head">
+        <span class="label">Чаты</span>
+        <button id="new-chat" class="ghost" type="button">+ Новый</button>
+      </div>
+      <div id="chat-list" class="chat-list"></div>
     </aside>
 
     <main class="main">
@@ -33,8 +32,8 @@
           <h1>Чат по инфоресурсам IACPaaS</h1>
           <p>Ответы строятся только по результатам MCP-тулзов и проверяются валидатором.</p>
           <div class="chips">
-            <button class="chip" type="button" data-question="Какие ИР есть в каталоге?">Какие ИР есть в каталоге?</button>
             <button class="chip" type="button" data-question="Сколько вершин в ИР «Пример»?">Сколько вершин в ИР «Пример»?</button>
+            <button class="chip" type="button" data-question="Найди вершину «Наблюдение» в ИР «Пример»">Найди вершину «Наблюдение» в ИР «Пример»</button>
           </div>
         </div>
       </section>
@@ -43,7 +42,7 @@
         <textarea id="question" rows="1" placeholder="Введите вопрос..." aria-label="Вопрос"></textarea>
         <button id="send" type="submit">Отправить</button>
       </form>
-      <div class="footnote">В модель передаются последние 3 хода для контекста; каждый новый ответ проверяется валидатором.</div>
+      <div class="footnote">История сохраняется в SQLite; в модель уходят только ходы в пределах 128k контекста.</div>
     </main>
   </div>
 

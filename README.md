@@ -35,15 +35,6 @@ Copy-Item .env.example .env
 Запись по умолчанию выключена; включить: `IACPAAS_ALLOW_WRITE=true`.
 Write-тулзы без `confirm=true` возвращают план операции и ничего не меняют.
 
-## Каталог ИР
-
-API IACPaaS не умеет перечислять ресурсы, поэтому `list_inforesources` читает локальный
-`.iacpaas/catalog.json`. Скопируйте пример и замените запись на реальный ИР:
-
-```powershell
-Copy-Item .iacpaas/catalog.example.json .iacpaas/catalog.json
-```
-
 ## MCP Inspector
 
 Браузерный интерфейс для тулзов, ключи IACPaaS не нужны для запуска:
@@ -52,8 +43,7 @@ Copy-Item .iacpaas/catalog.example.json .iacpaas/catalog.json
 npx -y @modelcontextprotocol/inspector uv run iacpaas-mcp
 ```
 
-В Inspector видно 8 тулзов и их схемы. `list_inforesources` работает по локальному
-каталогу; остальные чтения без ключей вернут `kind="auth"`.
+В Inspector видно 7 тулзов и их схемы. Без ключей IACPaaS чтения вернут `kind="auth"`.
 
 ## Агент
 
@@ -91,14 +81,17 @@ claims без источника или без проверяемого `value`/
 uv run iacpaas-web
 ```
 
-Откройте `http://127.0.0.1:8000`. Интерфейс показывает каталог ИР, ответ агента,
-бейдж проверки и источники claims.
+Откройте `http://127.0.0.1:8000`. Слева - список чатов, справа - ответы, бейдж проверки
+и источники claims.
+
+Все чаты и ходы хранятся в `data/chat.db` (SQLite) и не удаляются. Новый чат создается
+при первом сообщении. В модель уходят только ходы, помещающиеся в жесткий лимит
+128 000 токенов; остальные остаются в истории и видны в интерфейсе. Отказы и fail-safe
+сохраняются, но в контекст модели не включаются.
 
 Чат работает в read-only режиме и без авторизации пользователей: сервер слушает
 `127.0.0.1`. Для ответов нужны `IACPAAS_AGENT_API_KEY`, `IACPAAS_AGENT_MODEL` и
 `IACPAAS_AGENT_BASE_URL`; без ключей IACPaaS чтение вернет `kind="auth"`.
-В модель передаются последние 3 хода; их `call_id` переименовываются в `h1_...`, `h2_...`
-и остаются доступны валидатору.
 
 ## VS Code
 
@@ -110,14 +103,14 @@ uv run iacpaas-web
 ответов доступен в standalone-режиме (`iacpaas-agent`).
 
 Примеры запросов:
-- «Какие ИР есть в каталоге?»
 - «Сколько вершин в ИР «Пример»?»
+- «Найди вершину «Наблюдение» в ИР «Пример»»
 
 ## Структура
 
 - `src/iacpaas_mcp` - MCP-сервер;
 - `src/iacpaas_agent` - LangGraph-агент и валидатор;
-- `src/iacpaas_web` - браузерный чат на FastAPI;
+- `src/iacpaas_web` - браузерный чат на FastAPI и SQLite;
 - `docs` - архитектура, сценарии, соответствие API и решения;
 - `.vscode/mcp.json`, `.github/agents/iacpaas.agent.md` - режим VS Code.
 

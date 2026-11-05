@@ -3,13 +3,11 @@ const empty = document.getElementById("empty");
 const form = document.getElementById("composer");
 const input = document.getElementById("question");
 const send = document.getElementById("send");
-const catalogList = document.getElementById("catalog-list");
-const catalogSearch = document.getElementById("catalog-search");
-const catalogError = document.getElementById("catalog-error");
+const chatList = document.getElementById("chat-list");
 const modelPill = document.getElementById("model");
 const promptPill = document.getElementById("prompt");
 const newChat = document.getElementById("new-chat");
-let turns = [];
+let currentDialogueId = null;
 
 function h(tag, className, text) {
   const node = document.createElement(tag);
@@ -26,6 +24,28 @@ function hideEmpty() {
   empty.style.display = "none";
 }
 
+function resizeInput() {
+  input.classList.remove("multiline");
+  input.style.height = "auto";
+  const lineHeight = parseFloat(getComputedStyle(input).lineHeight);
+  if (input.scrollHeight > lineHeight * 1.5) {
+    input.classList.add("multiline");
+  }
+  input.style.height = "auto";
+  const height = Math.min(input.scrollHeight + 2, 160);
+  input.style.height = `${height}px`;
+  input.style.overflowY = input.scrollHeight + 2 > 160 ? "auto" : "hidden";
+}
+
+function formatDate(timestamp) {
+  return new Date(timestamp * 1000).toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function badge(data) {
   if (data.answer && data.answer.refused) return ["Нужны данные", "badge-gray"];
   if (data.verdict && data.verdict.ok && data.attempts > 1) return ["Исправлено", "badge-yellow"];
@@ -33,12 +53,16 @@ function badge(data) {
   return ["Не подтверждено", "badge-red"];
 }
 
-function addUser(text) {
+function userRow(text) {
   const row = h("div", "row user");
   const bubble = h("div", "bubble user-bubble");
   bubble.append(h("div", "answer-text", text));
   row.append(bubble);
-  messages.append(row);
+  return row;
+}
+
+function addUser(text) {
+  messages.append(userRow(text));
   hideEmpty();
   scrollDown();
 }
@@ -117,7 +141,7 @@ function renderAnswer(data) {
     bubble.append(reasons);
   } else if (data.reasons && data.reasons.length) {
     const reasons = h("div", "claim");
-    reasons.append(h("div", "claim-statement", "Почему ответ не подтвержден"));
+    reasons.append(h("div", "claim-statement", "Почему ответ не подтверждён"));
     for (const reason of data.reasons) {
       reasons.append(h("div", "claim-meta", reason));
     }
@@ -128,10 +152,80 @@ function renderAnswer(data) {
   return row;
 }
 
+function renderStoredMessage(message) {
+  const fragment = document.createDocumentFragment();
+  fragment.append(userRow(message.question));
+  fragment.append(renderAnswer(message));
+  return fragment;
+}
+
+async function loadDialogues() {
+  try {
+    const response = await fetch("/api/dialogues");
+    const data = await response.json();
+    const items = Array.isArray(data.items) ? data.items : [];
+    chatList.replaceChildren();
+    if (!items.length) return;
+
+    for (const item of items) {
+      const entry = h("div", "chat-item");
+      entry.append(h("div", "chat-title", item.title));
+      entry.append(h("div", "chat-meta", formatDate(item.updated_at)));
+      if (item.id === currentDialogueId) entry.classList.add("active");
+      entry.addEventListener("click", () => openDialogue(item.id));
+      chatList.append(entry);
+    }
+  } catch (error) {
+    console.error(error);
+    chatList.replaceChildren();
+  }
+}
+
+async function openDialogue(dialogueId) {
+  if (send.disabled) return;
+  try {
+    const response = await fetch(`/api/dialogues/${encodeURIComponent(dialogueId)}`);
+    if (!response.ok) throw new Error("диалог не найден");
+    const data = await response.json();
+    currentDialogueId = dialogueId;
+    localStorage.setItem("iacpaas_dialogue", dialogueId);
+
+    if (data.messages.length) {
+      const fragment = document.createDocumentFragment();
+      for (const message of data.messages) fragment.append(renderStoredMessage(message));
+      messages.replaceChildren(fragment);
+      empty.style.display = "none";
+    } else {
+      messages.replaceChildren(empty);
+      empty.style.display = "";
+    }
+    scrollDown();
+    loadDialogues();
+  } catch (error) {
+    console.error(error);
+    localStorage.removeItem("iacpaas_dialogue");
+    currentDialogueId = null;
+    messages.replaceChildren(empty);
+    empty.style.display = "";
+    loadDialogues();
+  }
+}
+
+function openNewChat() {
+  currentDialogueId = null;
+  localStorage.removeItem("iacpaas_dialogue");
+  messages.replaceChildren(empty);
+  empty.style.display = "";
+  input.value = "";
+  resizeInput();
+  input.focus();
+  loadDialogues();
+}
+
 async function ask(question) {
   addUser(question);
   input.value = "";
-  input.style.height = "auto";
+  resizeInput();
   send.disabled = true;
   newChat.disabled = true;
   const loading = addLoading();
@@ -140,16 +234,17 @@ async function ask(question) {
     const response = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question, history: turns.slice(-3) }),
+      body: JSON.stringify({ question, dialogue_id: currentDialogueId }),
     });
     const data = await response.json();
     loading.remove();
     if (!response.ok || data.error) {
       addError(data.error || `HTTP ${response.status}`, data.kind);
     } else {
+      currentDialogueId = data.dialogue_id;
+      localStorage.setItem("iacpaas_dialogue", currentDialogueId);
       messages.append(renderAnswer(data));
-      turns.push({ question, answer: data.answer, calls: data.calls });
-      if (turns.length > 10) turns.shift();
+      loadDialogues();
       scrollDown();
     }
   } catch (error) {
@@ -174,35 +269,6 @@ async function loadHealth() {
   }
 }
 
-async function loadCatalog() {
-  catalogError.textContent = "";
-  catalogList.replaceChildren();
-  try {
-    const response = await fetch(`/api/catalog?query=${encodeURIComponent(catalogSearch.value)}`);
-    const data = await response.json();
-    if (data.error) {
-      catalogError.textContent = data.error;
-      return;
-    }
-    if (!data.items.length) {
-      catalogError.textContent = "Ничего не найдено";
-      return;
-    }
-    for (const item of data.items) {
-      const entry = h("li", "catalog-item");
-      entry.append(h("div", "catalog-title", item.title));
-      entry.append(h("div", "catalog-path", item.path));
-      entry.addEventListener("click", () => {
-        input.value = item.path;
-        input.focus();
-      });
-      catalogList.append(entry);
-    }
-  } catch (error) {
-    catalogError.textContent = `Ошибка каталога: ${error.message}`;
-  }
-}
-
 form.addEventListener("submit", (event) => {
   event.preventDefault();
   const question = input.value.trim();
@@ -211,8 +277,7 @@ form.addEventListener("submit", (event) => {
 });
 
 input.addEventListener("input", () => {
-  input.style.height = "auto";
-  input.style.height = `${Math.min(input.scrollHeight, 160)}px`;
+  resizeInput();
 });
 
 input.addEventListener("keydown", (event) => {
@@ -222,20 +287,7 @@ input.addEventListener("keydown", (event) => {
   }
 });
 
-let catalogTimer;
-catalogSearch.addEventListener("input", () => {
-  clearTimeout(catalogTimer);
-  catalogTimer = setTimeout(loadCatalog, 250);
-});
-
-newChat.addEventListener("click", () => {
-  messages.replaceChildren(empty);
-  empty.style.display = "";
-  turns = [];
-  input.value = "";
-  input.style.height = "auto";
-  input.focus();
-});
+newChat.addEventListener("click", openNewChat);
 
 document.querySelectorAll(".chip").forEach((chip) => {
   chip.addEventListener("click", () => {
@@ -245,5 +297,11 @@ document.querySelectorAll(".chip").forEach((chip) => {
 });
 
 loadHealth();
-loadCatalog();
-input.focus();
+resizeInput();
+const savedDialogue = localStorage.getItem("iacpaas_dialogue");
+if (savedDialogue) {
+  openDialogue(savedDialogue);
+} else {
+  loadDialogues();
+  input.focus();
+}

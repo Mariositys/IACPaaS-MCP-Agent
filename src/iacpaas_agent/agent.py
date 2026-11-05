@@ -27,7 +27,14 @@ API_KEY = os.getenv("IACPAAS_AGENT_API_KEY")
 
 MAX_STEPS = 8
 MAX_ATTEMPTS = 3
-MAX_HISTORY = 3
+
+CONTEXT_LIMIT_TOKENS = 128_000
+OUTPUT_RESERVE_TOKENS = 8_000
+CHARS_PER_TOKEN = 3
+TOKEN_SAFETY = 0.8
+PROMPT_CHAR_LIMIT = int((CONTEXT_LIMIT_TOKENS - OUTPUT_RESERVE_TOKENS) * CHARS_PER_TOKEN * TOKEN_SAFETY)
+HISTORY_CHAR_LIMIT = int(PROMPT_CHAR_LIMIT * 0.75)
+CONTEXT_LIMIT_TEXT = "История не помещается в контекст 128 000 токенов. Начните новый чат."
 
 
 class AgentState(TypedDict):
@@ -148,38 +155,82 @@ def initial_state(question: str, history: str = "", history_evidence: dict[str, 
     }
 
 
-def prepare_history(history: list[dict[str, Any]] | None) -> tuple[dict[str, Any], str]:
-    """Собрать evidence прошлых ходов и текст для промпта."""
-    evidence: dict[str, Any] = {}
-    lines = []
-    for turn_index, turn in enumerate((history or [])[-MAX_HISTORY:], start=1):
-        question = str(turn.get("question", ""))[:500]
-        answer = turn.get("answer")
-        if not isinstance(answer, dict):
-            answer = {}
-        text = str(answer.get("answer") or turn.get("final") or "")[:2000]
-        calls = turn.get("calls")
-        if not isinstance(calls, list):
-            calls = []
-        call_ids = []
-        turn_evidence = {}
-        for call in calls[:10]:
-            old_id = call.get("call_id")
-            if not old_id:
-                continue
-            new_id = f"h{turn_index}_{old_id}"
-            turn_evidence[new_id] = call.get("result")
-            evidence[new_id] = call.get("result")
-            call_ids.append(new_id)
-        blocks = [
-            f"Ход {turn_index}. Вопрос: {question}",
+def is_refused_message(message: dict[str, Any]) -> bool:
+    answer = message.get("answer")
+    return isinstance(answer, dict) and bool(answer.get("refused"))
+
+
+def message_block(message: dict[str, Any], index: int) -> tuple[str, dict[str, Any]]:
+    message_id = message.get("message_id") or index
+    question = str(message.get("question", ""))[:500]
+    answer = message.get("answer")
+    if not isinstance(answer, dict):
+        answer = {}
+    text = str(answer.get("answer") or message.get("final") or "")[:2000]
+    calls = message.get("calls")
+    if not isinstance(calls, list):
+        calls = []
+
+    call_ids = []
+    evidence = {}
+    for call in calls[:10]:
+        old_id = call.get("call_id")
+        if not old_id:
+            continue
+        new_id = f"m{message_id}_{old_id}"
+        evidence[new_id] = call.get("result")
+        call_ids.append(new_id)
+
+    block = "\n".join(
+        [
+            f"Ход m{message_id}. Вопрос: {question}",
             f"Ответ: {text}",
             f"ID источников: {', '.join(call_ids) or 'нет'}",
             "Источники:",
-            json.dumps(turn_evidence, ensure_ascii=False, indent=2, sort_keys=True, default=str),
+            json.dumps(evidence, ensure_ascii=False, indent=2, sort_keys=True, default=str),
         ]
-        lines.append("\n".join(blocks))
-    return evidence, "\n\n".join(lines)
+    )
+    return block, evidence
+
+
+def prepare_history(
+    history: list[dict[str, Any]] | None,
+) -> tuple[dict[str, Any], str, bool]:
+    """Выбрать новые сообщения, помещающиеся в бюджет контекста."""
+    candidates = []
+    for index, message in enumerate(history or [], start=1):
+        if not is_refused_message(message):
+            candidates.append(message_block(message, index))
+
+    selected = []
+    total = 0
+    for block, evidence in reversed(candidates):
+        if total + len(block) > HISTORY_CHAR_LIMIT:
+            if not selected:
+                return {}, "", False
+            break
+        selected.append((block, evidence))
+        total += len(block)
+
+    selected.reverse()
+    merged = {}
+    for _, evidence in selected:
+        merged.update(evidence)
+    return merged, "\n\n".join(block for block, _ in selected), True
+
+
+def context_limit_result(question: str) -> dict[str, Any]:
+    answer = AgentAnswer(answer=CONTEXT_LIMIT_TEXT, claims=[], refused=True)
+    return {
+        "question": question,
+        "final": CONTEXT_LIMIT_TEXT,
+        "calls": [],
+        "answer": answer.model_dump(mode="json"),
+        "verdict": {"ok": True, "reasons": []},
+        "reasons": [],
+        "attempts": 0,
+        "steps": 0,
+    }
 
 
 def build_graph(model: ChatOpenAI, tools: list[StructuredTool]):
@@ -226,6 +277,9 @@ def build_graph(model: ChatOpenAI, tools: list[StructuredTool]):
             evidence=json.dumps(current_evidence, ensure_ascii=False, indent=2, sort_keys=True, default=str),
             reasons=reasons,
         )
+        if len(SYSTEM_PROMPT) + len(history_text) + len(prompt) > PROMPT_CHAR_LIMIT:
+            answer = AgentAnswer(answer=CONTEXT_LIMIT_TEXT, claims=[], refused=True)
+            return {"answer": answer, "reasons": [], "attempts": state["attempts"] + 1}
         try:
             answer = await structured_model.ainvoke(
                 [system_message(SYSTEM_PROMPT, history_text), HumanMessage(content=prompt)]
@@ -287,7 +341,10 @@ def build_graph(model: ChatOpenAI, tools: list[StructuredTool]):
 async def run_agent(
     question: str, read_only: bool = False, history: list[dict[str, Any]] | None = None
 ) -> dict[str, Any]:
-    history_evidence, history_text = prepare_history(history)
+    history_evidence, history_text, fits = prepare_history(history)
+    if not fits:
+        return context_limit_result(question)
+
     transport = StdioTransport(command=sys.executable, args=["-m", "iacpaas_mcp"])
     async with Client(transport) as mcp_client:
         tools = await load_tools(mcp_client, read_only=read_only)

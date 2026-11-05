@@ -2,19 +2,21 @@
 
 | Требование | Где реализовано | Как проверить |
 |---|---|---|
-| Валидация ответов нейросети | `src/iacpaas_agent/schemas.py`, `src/iacpaas_agent/validator.py`, узел `validate` | сценарий 7: неверное число и выдуманный путь отклоняются |
+| Валидация ответов нейросети | `src/iacpaas_agent/schemas.py`, `src/iacpaas_agent/validator.py`, узел `validate` | сценарий 6: неверное число и выдуманный путь отклоняются |
 | Битый JSON или неверная схема ответа | `src/iacpaas_agent/agent.py`, `answer_node` | repair до 3 попыток, затем fail-safe |
 | Детерминированность, `temperature=0` | `src/iacpaas_agent/agent.py`, `make_model()` | температура зафиксирована; валидатор не использует случайность |
-| Не использовать внутренние знания | `Claim.sources` обязателен; проверка `call_id` и JSON Pointer; ответ без вызовов тулзов отклоняется | сценарий 7, ответ без источника |
+| Не использовать внутренние знания | `Claim.sources` обязателен; проверка `call_id` и JSON Pointer; ответ без вызовов тулзов отклоняется | сценарий 6, ответ без источника |
 | Сжатие ответов | не реализовано, отложено до v2 | - |
 | Типизированные входы и выходы тулзов | `src/iacpaas_mcp/models.py`, аннотации `server.py` | схемы в `list_tools()` |
 | Разделение read и write | теги и `readOnlyHint`/`destructiveHint` | MCP Inspector |
-| Подтверждение мутаций | `confirm=false` -> `OperationPreview` | сценарий 6 |
-| Диагностируемые ошибки | `ErrorResult` с `kind` | сценарии 2, 5, 6 |
-| Режимы запуска | `.vscode/mcp.json`, `.github/agents/iacpaas.agent.md`, CLI, веб-чат | сценарии 7, 9, 11 |
-| Браузерный чат | `src/iacpaas_web/app.py`, `index.html` | сценарий 11: ответ, источники, read-only |
-| История диалога | `run_agent(..., history=...)`, `h1_...` ID | сценарий 12: follow-up проверяется по общему evidence |
-| Prompt caching | стабильный префикс в `agent.py`; `cache_control` для Claude | сценарий 13: `cached_tokens` в usage Polza |
+| Подтверждение мутаций | `confirm=false` -> `OperationPreview` | сценарий 5 |
+| Диагностируемые ошибки | `ErrorResult` с `kind` | сценарии 2, 4, 5 |
+| Режимы запуска | `.vscode/mcp.json`, `.github/agents/iacpaas.agent.md`, CLI, веб-чат | сценарии 6, 8, 10 |
+| Браузерный чат | `src/iacpaas_web/app.py`, `index.html` | сценарий 10: ответ, источники, read-only |
+| Хранение чатов | `src/iacpaas_web/store.py`, SQLite | сценарий 10: история после F5 и список чатов |
+| История диалога | `run_agent(..., history=...)`, ID `m{message_id}_...` | сценарий 11: follow-up проверяется по evidence |
+| Лимит контекста 128k | константы в `agent.py`, `prepare_history` | сценарий 13: лишние ходы не отправляются |
+| Prompt caching | стабильный префикс в `agent.py`; `cache_control` для Claude | сценарий 12: `cached_tokens` в usage Polza |
 | Документирование соответствия API | `docs/tool-mapping.md` | таблица тулз -> HTTP |
 
 ## Что именно гарантирует валидатор
@@ -40,3 +42,5 @@
 - В режиме VS Code детерминированного валидатора нет.
 - Сжатие контекста и автотесты - v2.
 - LLM-judge для смыслового соответствия не реализован.
+- Веб-чат локальный, без авторизации: все чаты в SQLite видны на этой машине.
+- Чаты не удаляются, база растет; длина контекста оценивается как `chars / 3`.

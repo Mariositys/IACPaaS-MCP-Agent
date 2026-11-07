@@ -1,27 +1,38 @@
 """Браузерный чат над агентом IACPaaS."""
 
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
-from iacpaas_agent.agent import MODEL_NAME, run_agent
+from iacpaas_agent.agent import MODEL_NAME, AgentRuntime, run_agent
 from iacpaas_agent.prompts import PROMPT_VERSION
 
 from . import store
 
 INDEX = Path(__file__).with_name("index.html")
 STATIC = Path(__file__).with_name("static")
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     store.init_db()
-    yield
+    runtime = AgentRuntime()
+    _app.state.agent_runtime = runtime
+    try:
+        await runtime.start()
+    except Exception as exc:  # noqa: BLE001 - веб-сервер должен запуститься для диагностики
+        logger.warning("MCP runtime не запущен: %s", exc)
+    try:
+        yield
+    finally:
+        await runtime.stop()
 
 
 app = FastAPI(title="IACPaaS Chat", lifespan=lifespan)
@@ -65,12 +76,13 @@ async def dialogue(dialogue_id: str) -> Any:
 
 
 @app.post("/api/chat")
-async def chat(request: ChatRequest) -> Any:
+async def chat(request: ChatRequest, http_request: Request) -> Any:
     dialogue_id = request.dialogue_id
     history = store.get_messages(dialogue_id) if dialogue_id and store.get_dialogue(dialogue_id) else []
+    runtime = getattr(http_request.app.state, "agent_runtime", None)
 
     try:
-        result = await run_agent(request.question, read_only=True, history=history)
+        result = await run_agent(request.question, read_only=True, history=history, runtime=runtime)
     except Exception as e:  # noqa: BLE001 - ошибка показывается в чате
         message = str(e)
         lower = message.casefold()

@@ -1,8 +1,10 @@
 """Цикл агента: сбор данных через MCP, структурированный ответ, проверка и repair."""
 
+import asyncio
 import json
 import os
 import sys
+from contextlib import suppress
 from typing import Annotated, Any, TypedDict
 
 from dotenv import load_dotenv
@@ -112,6 +114,56 @@ async def load_tools(mcp_client: Client, read_only: bool = False) -> list[Struct
             )
         )
     return tools
+
+
+class AgentRuntime:
+    """Долгоживущий MCP-клиент и кэш тулзов для веб-чата."""
+
+    def __init__(self) -> None:
+        self._lock = asyncio.Lock()
+        self._client_cm: Any = None
+        self._client: Client | None = None
+        self._tools: dict[bool, list[StructuredTool]] = {}
+
+    async def _start_locked(self) -> None:
+        transport = StdioTransport(command=sys.executable, args=["-m", "iacpaas_mcp"])
+        client_cm = Client(transport)
+        client = await client_cm.__aenter__()
+        self._client_cm = client_cm
+        self._client = client
+
+    async def _stop_locked(self) -> None:
+        client_cm, self._client_cm = self._client_cm, None
+        self._client = None
+        self._tools.clear()
+        if client_cm is not None:
+            with suppress(Exception):
+                await client_cm.__aexit__(None, None, None)
+
+    async def start(self) -> None:
+        async with self._lock:
+            if self._client is None:
+                await self._start_locked()
+
+    async def stop(self) -> None:
+        async with self._lock:
+            await self._stop_locked()
+
+    async def tools(self, read_only: bool) -> list[StructuredTool]:
+        async with self._lock:
+            cached = self._tools.get(read_only)
+            if cached is not None:
+                return cached
+            if self._client is None:
+                await self._start_locked()
+            try:
+                loaded = await load_tools(self._client, read_only=read_only)
+            except Exception:  # noqa: BLE001 - ошибка MCP-клиента требует перезапуска
+                await self._stop_locked()
+                await self._start_locked()
+                loaded = await load_tools(self._client, read_only=read_only)
+            self._tools[read_only] = loaded
+            return loaded
 
 
 def is_anthropic_model() -> bool:
@@ -339,18 +391,27 @@ def build_graph(model: ChatOpenAI, tools: list[StructuredTool]):
 
 
 async def run_agent(
-    question: str, read_only: bool = False, history: list[dict[str, Any]] | None = None
+    question: str,
+    read_only: bool = False,
+    history: list[dict[str, Any]] | None = None,
+    runtime: AgentRuntime | None = None,
 ) -> dict[str, Any]:
     history_evidence, history_text, fits = prepare_history(history)
     if not fits:
         return context_limit_result(question)
 
-    transport = StdioTransport(command=sys.executable, args=["-m", "iacpaas_mcp"])
-    async with Client(transport) as mcp_client:
-        tools = await load_tools(mcp_client, read_only=read_only)
+    if runtime is not None:
+        tools = await runtime.tools(read_only)
         graph = build_graph(make_model(), tools)
         state = initial_state(question, history_text, history_evidence)
         result = await graph.ainvoke(state)
+    else:
+        transport = StdioTransport(command=sys.executable, args=["-m", "iacpaas_mcp"])
+        async with Client(transport) as mcp_client:
+            tools = await load_tools(mcp_client, read_only=read_only)
+            graph = build_graph(make_model(), tools)
+            state = initial_state(question, history_text, history_evidence)
+            result = await graph.ainvoke(state)
     return {
         "question": question,
         "final": result["final"],

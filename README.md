@@ -88,8 +88,11 @@ uv run iacpaas-web
 сохраняются, но в контекст модели не включаются.
 
 Чат работает в read-only режиме и без авторизации пользователей: сервер слушает
-`127.0.0.1`. Для ответов нужны `IACPAAS_AGENT_API_KEY`, `IACPAAS_AGENT_MODEL` и
-`IACPAAS_AGENT_BASE_URL`; без ключей IACPaaS чтение вернет `kind="auth"`.
+`127.0.0.1`. MCP-сервер запускается один раз в `lifespan` веб-приложения, а не на
+каждый запрос; тулзы кэшируются в `AgentRuntime`. При остановке `uvicorn` дочерний
+MCP-процесс завершается. Для ответов нужны `IACPAAS_AGENT_API_KEY`,
+`IACPAAS_AGENT_MODEL` и `IACPAAS_AGENT_BASE_URL`; без ключей IACPaaS чтение вернет
+`kind="auth"`.
 
 ## VS Code
 

@@ -13,6 +13,7 @@
 | Диагностируемые ошибки | `ErrorResult` с `kind` | сценарии 2, 4, 5 |
 | Режимы запуска | `.cline/plugins/iacpaas-spike`, CLI, веб-чат | сценарии 6, 8, 10 |
 | Валидация в VS Code (Cline) | плагин: `submit_answer` с `completesRun`, `afterTool`, `src/iacpaas_agent/bridge.py` | сценарий 8: неверный claim отклоняется, `submit_and_exit` блокируется |
+| Переиспользование MCP в веб-чате | `AgentRuntime` в `agent.py`, запуск в `lifespan` | сценарий 10: MCP-процесс один на сервер, второй запрос не создает новый |
 | Браузерный чат | `src/iacpaas_web/app.py`, `index.html` | сценарий 10: ответ, источники, read-only |
 | Хранение чатов | `src/iacpaas_web/store.py`, SQLite | сценарий 10: история после F5 и список чатов |
 | История диалога | `run_agent(..., history=...)`, ID `m{message_id}_...` | сценарий 11: follow-up проверяется по evidence |

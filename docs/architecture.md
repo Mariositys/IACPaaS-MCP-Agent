@@ -26,7 +26,9 @@ flowchart LR
   детерминированная проверка.
 - **Веб-чат** - `iacpaas-web`: FastAPI и одна HTML-страница, тот же `run_agent`
   в read-only режиме. Все чаты и ходы хранятся в SQLite; evidence прошлых вызовов
-  добавляется в пул с ID `m{message_id}_...`.
+  добавляется в пул с ID `m{message_id}_...`. `AgentRuntime` создает один MCP-клиент
+  в `lifespan`, кэширует read/write-наборы тулзов и перезапускает клиент при ошибке
+  `list_tools`; CLI по-прежнему запускает MCP на один вызов.
 
 ## Цикл агента
 

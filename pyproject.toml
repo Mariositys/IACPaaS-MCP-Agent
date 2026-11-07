@@ -23,6 +23,7 @@ dependencies = [
 iacpaas-mcp = "iacpaas_mcp.__main__:main"
 iacpaas-agent = "iacpaas_agent.__main__:main"
 iacpaas-web = "iacpaas_web.__main__:main"
+iacpaas-validate = "iacpaas_agent.bridge:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/iacpaas_mcp", "src/iacpaas_agent", "src/iacpaas_web"]

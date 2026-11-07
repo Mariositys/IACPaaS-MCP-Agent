@@ -9,13 +9,11 @@ uv sync
 uv run iacpaas-mcp
 ```
 
-Сервер работает по stdio (для VS Code) или по HTTP:
+Сервер работает по stdio (для Cline-плагина) или по HTTP:
 
 ```powershell
 uv run iacpaas-mcp --transport http
 ```
-
-В VS Code сервер подхватывается из `.vscode/mcp.json`.
 
 ## Авторизация
 
@@ -95,12 +93,23 @@ uv run iacpaas-web
 
 ## VS Code
 
-Откройте папку `IACPaaS-MCP-Agent`, выполните `uv sync` и выберите агента **IACPaaS**
-в списке агентов чата. MCP-сервер подхватывается из `.vscode/mcp.json`,
-инструкции лежат в `.github/agents/iacpaas.agent.md`.
+### Cline: режим с валидатором
 
-В этом режиме работает только инструкция агенту; детерминированный валидатор
-ответов доступен в standalone-режиме (`iacpaas-agent`).
+Нужен Cline 4.0+ (проверено на 4.1.26). Откройте папку `IACPaaS-MCP-Agent`
+как рабочую папку: Cline ищет плагины в `<workspace>/.cline/plugins`, поэтому
+плагин `.cline/plugins/iacpaas-spike` подхватывается автоматически и
+регистрирует MCP-сервер `iacpaas`, правило и тулз `submit_answer`.
+
+Пользователь просто задаёт вопрос в чате Cline, без `@`. Поток:
+
+1. модель вызывает read-only MCP-тулзы;
+2. `afterTool` разворачивает результат и добавляет `call_id`;
+3. `submit_answer` вызывает Python-мост `iacpaas-validate`;
+4. при ошибке модель исправляет ответ, при успехе run завершается.
+
+`submit_and_exit` и write-тулзы блокируются плагином. Для MCP-сервера нужны
+`IACPAAS_*`; модель выбирается в настройках Cline, `IACPAAS_AGENT_*` для этого
+режима не используются.
 
 Примеры запросов:
 - «Сколько вершин в ИР «Пример»?»
@@ -112,7 +121,7 @@ uv run iacpaas-web
 - `src/iacpaas_agent` - LangGraph-агент и валидатор;
 - `src/iacpaas_web` - браузерный чат на FastAPI и SQLite;
 - `docs` - архитектура, сценарии, соответствие API и решения;
-- `.vscode/mcp.json`, `.github/agents/iacpaas.agent.md` - режим VS Code.
+- `.cline/plugins/iacpaas-spike` - Cline-плагин с валидацией ответа.
 
 ## Документация
 
@@ -124,5 +133,6 @@ uv run iacpaas-web
 
 ## Статус
 
-M0–M7 и веб-чат готовы. Отложено до v2: сжатие ответов, автотесты, LLM-judge.
+M0–M7, веб-чат и Cline-плагин с валидацией готовы. Отложено до v2: сжатие
+ответов, автотесты, LLM-judge.
 

@@ -13,6 +13,14 @@
 | `update_vertex` | `PUT /api/data/update` | сервер, требуется `confirm=true` |
 | `delete_inforesource` | `DELETE /api/data/delete` | сервер, требуется `confirm=true` |
 
+## Инструменты Cline-плагина
+
+`submit_answer` - не эндпоинт IACPaaS, а completion tool плагина. Он принимает
+`AgentAnswer` с claims, проверяет их по evidence через `iacpaas_agent.bridge` и
+завершает run только при успешной проверке. `submit_and_exit` и write-тулзы
+(`import_inforesource`, `update_vertex`, `delete_inforesource`) блокируются
+хуком `beforeTool`.
+
 ## Ограничения API
 
 - Эндпоинта «список ИР / поиск по фонду» нет, поэтому путь задает пользователь.

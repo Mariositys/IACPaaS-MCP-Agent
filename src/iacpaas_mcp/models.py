@@ -20,7 +20,7 @@ VertexValue = bool | int | float | str
 
 TERMINAL_TYPES = ("ТЕРМИНАЛ-СОРТ", "ТЕРМИНАЛ-ЗНАЧЕНИЕ")
 # Поля, которых нет в официальной схеме IACPaaS (additionalProperties: false): при импорте не отправляем
-NON_SCHEMA_FIELDS = {"id", "specifier", "restrictor"}
+NON_SCHEMA_FIELDS = {"id", "specifier", "restrictor", "call_id"}
 
 IrPath = Annotated[
     str,
@@ -97,6 +97,7 @@ class InfoResourceDocument(Vertex):
 
     title: str = Field(description="Имя ИР, совпадает с name корня")
     path: str = Field(description="Полный путь к ИР, оканчивается на '$;'")
+    call_id: str = Field("", description="ID вызова для validate_answer")
     json_type: Literal["universal"] = "universal"
     ontology: str = Field(description="Путь к метаинформации (онтологии) ИР")
     context: list[str] = Field(default_factory=list, description="Пути к контекстным ИР")
@@ -143,6 +144,7 @@ class Subgraph(BaseModel):
     nodes: list[GraphNode]
     edges: list[GraphEdge]
     truncated: bool = Field(False, description="True, если подграф обрезан по limit")
+    call_id: str = Field("", description="ID вызова для validate_answer")
 
 
 class GraphCounts(BaseModel):
@@ -150,6 +152,7 @@ class GraphCounts(BaseModel):
     start: str
     nodes: int
     edges: int
+    call_id: str = Field("", description="ID вызова для validate_answer")
 
 
 class QueryResult(BaseModel):
@@ -158,6 +161,7 @@ class QueryResult(BaseModel):
     matches: list[GraphNode]
     total: int
     truncated: bool = False
+    call_id: str = Field("", description="ID вызова для validate_answer")
 
 
 # ---------- запись ----------

@@ -11,8 +11,8 @@
 | Разделение read и write | теги и `readOnlyHint`/`destructiveHint` | MCP Inspector |
 | Подтверждение мутаций | `confirm=false` -> `OperationPreview` | сценарий 5 |
 | Диагностируемые ошибки | `ErrorResult` с `kind` | сценарии 2, 4, 5 |
-| Режимы запуска | `.cline/plugins/iacpaas-spike`, CLI, веб-чат | сценарии 6, 8, 10 |
-| Валидация в VS Code (Cline) | плагин: `submit_answer` с `completesRun`, `afterTool`, `src/iacpaas_agent/bridge.py` | сценарий 8: неверный claim отклоняется, `submit_and_exit` блокируется |
+| Режимы запуска | `.vscode/mcp.json`, `.github/agents/iacpaas.agent.md`, CLI, веб-чат | сценарии 6, 8, 10 |
+| Валидация в VS Code (native) | `validate_answer` в `server.py`, evidence-журнал сессии | сценарий 8: агент вызывает тулз; при `ok=false` исправляет ответ. Жёсткой гарантии вызова нет |
 | Переиспользование MCP в веб-чате | `AgentRuntime` в `agent.py`, запуск в `lifespan` | сценарий 10: MCP-процесс один на сервер, второй запрос не создает новый |
 | Браузерный чат | `src/iacpaas_web/app.py`, `index.html` | сценарий 10: ответ, источники, read-only |
 | Хранение чатов | `src/iacpaas_web/store.py`, SQLite | сценарий 10: история после F5 и список чатов |
@@ -41,9 +41,8 @@
 - Свободный текст `answer` не сверяется с данными пословно; гарантия относится к claims.
 - `temperature=0` не делает ответ LLM побитово воспроизводимым. Воспроизводим вердикт
   валидатора, а не генерация модели.
-- В VS Code валидатор работает в режиме Cline-плагина: `submit_answer` - единственный
-  completion tool, `submit_and_exit` и write-тулзы блокируются.
-- Cline-плагин требует Cline 4.0+ и запускает Python-мост валидатора через `uv`.
+- В режиме VS Code валидатор доступен как `validate_answer`, но его вызов задан
+  инструкцией агенту, а не completion tool; модель может его пропустить.
 - Сжатие контекста и автотесты - v2.
 - LLM-judge для смыслового соответствия не реализован.
 - Веб-чат локальный, без авторизации: все чаты в SQLite видны на этой машине.

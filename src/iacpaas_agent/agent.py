@@ -29,6 +29,7 @@ API_KEY = os.getenv("IACPAAS_AGENT_API_KEY")
 
 MAX_STEPS = 8
 MAX_ATTEMPTS = 3
+AGENT_INTERNAL_TOOLS = {"validate_answer"}
 
 CONTEXT_LIMIT_TOKENS = 128_000
 OUTPUT_RESERVE_TOKENS = 8_000
@@ -97,6 +98,8 @@ async def load_tools(mcp_client: Client, read_only: bool = False) -> list[Struct
     """Обернуть MCP-тулзы в LangChain-тулзы, сохранив их JSON Schema."""
     tools = []
     for spec in await mcp_client.list_tools():
+        if spec.name in AGENT_INTERNAL_TOOLS:
+            continue
         if read_only and not is_read_only(spec):
             continue
         name = spec.name

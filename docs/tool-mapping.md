@@ -9,17 +9,10 @@
 | `get_subgraph` | `GET /api/data/export/user-item` + локальный обход | сервер |
 | `count_graph` | `GET /api/data/export/user-item` + локальный подсчет | сервер, **аналога в API нет** |
 | `query_graph` | `GET /api/data/export/user-item` + локальный поиск | сервер, **аналога в API нет** |
+| `validate_answer` | — локальная проверка | сервер; сверяет `AgentAnswer` с evidence сессии по `call_id` |
 | `import_inforesource` | `POST /api/data/import` | сервер, требуется `confirm=true` |
 | `update_vertex` | `PUT /api/data/update` | сервер, требуется `confirm=true` |
 | `delete_inforesource` | `DELETE /api/data/delete` | сервер, требуется `confirm=true` |
-
-## Инструменты Cline-плагина
-
-`submit_answer` - не эндпоинт IACPaaS, а completion tool плагина. Он принимает
-`AgentAnswer` с claims, проверяет их по evidence через `iacpaas_agent.bridge` и
-завершает run только при успешной проверке. `submit_and_exit` и write-тулзы
-(`import_inforesource`, `update_vertex`, `delete_inforesource`) блокируются
-хуком `beforeTool`.
 
 ## Ограничения API
 

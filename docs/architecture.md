@@ -7,28 +7,26 @@
 
 ```mermaid
 flowchart LR
-  U[Пользователь] --> V[Cline + плагин]
+  U[Пользователь] --> V[VS Code Agent]
   U --> S[Standalone CLI]
   U --> W[Веб-чат]
   V -->|MCP, stdio| M[MCP-сервер IACPaaS]
-  V -->|submit_answer| B[Python-мост: validator]
   S --> A[LangGraph-агент]
   W --> A
   A -->|MCP, stdio| M
   M -->|JSON/HTTP| P[(IACPaaS JSON API)]
 ```
 
-- **VS Code, Cline** - плагин `.cline/plugins/iacpaas-spike` регистрирует MCP-сервер,
-  правило и `submit_answer` с `completesRun`. Модель вызывает read-only тулзы,
-  `afterTool` добавляет `call_id`, `submit_answer` проверяет ответ через
-  `iacpaas_agent.bridge`. `submit_and_exit` и write-тулзы блокируются.
+- **VS Code** - MCP-сервер подключается из `.vscode/mcp.json`, поведение задает
+  `.github/agents/iacpaas.agent.md`. Доступны read-only тулзы и `validate_answer`;
+  сервер хранит evidence чтений в рамках MCP-сессии, а агент обязан вызвать
+  проверку перед финальным ответом. Вызов не принудительный, а инструктивный.
 - **Standalone CLI** - `iacpaas-agent`: LangGraph-цикл, структурированный ответ,
   детерминированная проверка.
 - **Веб-чат** - `iacpaas-web`: FastAPI и одна HTML-страница, тот же `run_agent`
   в read-only режиме. Все чаты и ходы хранятся в SQLite; evidence прошлых вызовов
   добавляется в пул с ID `m{message_id}_...`. `AgentRuntime` создает один MCP-клиент
-  в `lifespan`, кэширует read/write-наборы тулзов и перезапускает клиент при ошибке
-  `list_tools`; CLI по-прежнему запускает MCP на один вызов.
+  в `lifespan` и кэширует наборы тулзов; CLI по-прежнему запускает MCP на один вызов.
 
 ## Цикл агента
 
@@ -59,9 +57,7 @@ flowchart LR
 | `src/iacpaas_agent/agent.py` | LangGraph-цикл, обертки MCP-тулзов, модель |
 | `src/iacpaas_agent/schemas.py` | `AgentAnswer`, `Claim`, `Source` |
 | `src/iacpaas_agent/validator.py` | детерминированная проверка ответа |
-| `src/iacpaas_agent/bridge.py` | JSON-мост `AgentAnswer + evidence -> verdict` для Cline |
 | `src/iacpaas_agent/prompts.py` | промпты и `PROMPT_VERSION` |
-| `.cline/plugins/iacpaas-spike` | Cline-плагин: MCP, `afterTool`, `submit_answer` |
 | `src/iacpaas_web/app.py` | FastAPI: чат, сессии, health |
 | `src/iacpaas_web/store.py` | SQLite: чаты и все ходы без удаления |
 | `src/iacpaas_web/index.html` | разметка чата |
@@ -82,8 +78,9 @@ flowchart LR
   Gemini/Grok кэшируют автоматически.
 - «Без внутренних знаний» означает: нет подтвержденного источника - нет утверждения
   в `claims`. Свободный текст `answer` валидатором не проверяется.
-- В режиме VS Code с Cline валидатор обязателен: единственный completion tool -
-  `submit_answer`, а `submit_and_exit` блокируется.
+- В режиме VS Code валидатор вызывается отдельным тулзом `validate_answer`, но
+  custom agent не принуждает модель к вызову. Гарантия появляется только в
+  режимах, где completion tool нельзя обойти.
 - Веб-чат read-only, без авторизации пользователей. Все чаты и ходы хранятся в
   `data/chat.db` и не удаляются; в модель уходят только ходы в пределах 128k,
   отказы и fail-safe в контекст не включаются.

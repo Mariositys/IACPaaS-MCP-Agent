@@ -9,11 +9,13 @@ uv sync
 uv run iacpaas-mcp
 ```
 
-Сервер работает по stdio (для Cline-плагина) или по HTTP:
+Сервер работает по stdio (для VS Code) или по HTTP:
 
 ```powershell
 uv run iacpaas-mcp --transport http
 ```
+
+В VS Code сервер подхватывается из `.vscode/mcp.json`.
 
 ## Авторизация
 
@@ -41,7 +43,7 @@ Write-тулзы без `confirm=true` возвращают план опера�
 npx -y @modelcontextprotocol/inspector uv run iacpaas-mcp
 ```
 
-В Inspector видно 7 тулзов и их схемы. Без ключей IACPaaS чтения вернут `kind="auth"`.
+В Inspector видно 8 тулзов и их схемы. Без ключей IACPaaS чтения вернут `kind="auth"`.
 
 ## Агент
 
@@ -96,27 +98,25 @@ MCP-процесс завершается. Для ответов нужны `IAC
 
 ## VS Code
 
-### Cline: режим с валидатором
+Откройте папку `IACPaaS-MCP-Agent`, выполните `uv sync` и выберите агента **IACPaaS**
+в списке агентов чата. MCP-сервер подхватывается из `.vscode/mcp.json`,
+инструкции лежат в `.github/agents/iacpaas.agent.md`.
 
-Нужен Cline 4.0+ (проверено на 4.1.26). Откройте папку `IACPaaS-MCP-Agent`
-как рабочую папку: Cline ищет плагины в `<workspace>/.cline/plugins`, поэтому
-плагин `.cline/plugins/iacpaas-spike` подхватывается автоматически и
-регистрирует MCP-сервер `iacpaas`, правило и тулз `submit_answer`.
-
-Пользователь просто задаёт вопрос в чате Cline, без `@`. Поток:
-
-1. модель вызывает read-only MCP-тулзы;
-2. `afterTool` разворачивает результат и добавляет `call_id`;
-3. `submit_answer` вызывает Python-мост `iacpaas-validate`;
-4. при ошибке модель исправляет ответ, при успехе run завершается.
-
-`submit_and_exit` и write-тулзы блокируются плагином. Для MCP-сервера нужны
-`IACPAAS_*`; модель выбирается в настройках Cline, `IACPAAS_AGENT_*` для этого
-режима не используются.
+Агент обязан перед финальным ответом вызвать `validate_answer` с `AgentAnswer`.
+Тулз проверяет claims по журналу evidence текущей MCP-сессии; при `ok=false`
+агент должен исправить ответ и повторить. Это инструментальная проверка, но
+нативный custom agent не гарантирует вызов: жёсткое принуждение есть только
+в режимах с completion tool.
 
 Примеры запросов:
-- «Сколько вершин в ИР «Пример»?»
-- «Найди вершину «Наблюдение» в ИР «Пример»»
+- «Сколько вершин в ИР «Пример»?» - `count_graph`.
+- «Найди вершину «Наблюдение» в ИР «Пример»» - `query_graph`.
+- «Покажи подграф ИР «Пример» от вершины «Наблюдение» глубиной 2» - `get_subgraph`.
+
+Диагностика: `uv run iacpaas-mcp --version` проверяет запуск сервера, MCP Inspector
+показывает 8 тулзов и их схемы, включая `validate_answer`. Ошибки чтения приходят
+как `ErrorResult` с полем `kind` (`auth`, `not_found`, `platform`, `validation`);
+при проблемах с агентом проверьте Output канала Copilot и `.vscode/mcp.json`.
 
 ## Структура
 
@@ -124,7 +124,7 @@ MCP-процесс завершается. Для ответов нужны `IAC
 - `src/iacpaas_agent` - LangGraph-агент и валидатор;
 - `src/iacpaas_web` - браузерный чат на FastAPI и SQLite;
 - `docs` - архитектура, сценарии, соответствие API и решения;
-- `.cline/plugins/iacpaas-spike` - Cline-плагин с валидацией ответа.
+- `.vscode/mcp.json`, `.github/agents/iacpaas.agent.md` - режим VS Code.
 
 ## Документация
 
@@ -136,6 +136,5 @@ MCP-процесс завершается. Для ответов нужны `IAC
 
 ## Статус
 
-M0–M7, веб-чат и Cline-плагин с валидацией готовы. Отложено до v2: сжатие
-ответов, автотесты, LLM-judge.
+M0–M7 и веб-чат готовы. Отложено до v2: сжатие ответов, автотесты, LLM-judge.
 

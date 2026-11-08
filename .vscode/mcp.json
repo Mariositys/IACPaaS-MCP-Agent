@@ -1,0 +1,9 @@
+{
+  "servers": {
+    "iacpaas": {
+      "type": "stdio",
+      "command": "uv",
+      "args": ["run", "iacpaas-mcp"]
+    }
+  }
+}

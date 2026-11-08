@@ -5,6 +5,7 @@ get_inforesource       -> GET    /api/data/export/user-item
 get_subgraph           -> GET    /api/data/export/user-item (start-target-concept-path, export-depth)
 count_graph            -> GET    /api/data/export/user-item + подсчет по дереву
 query_graph            -> GET    /api/data/export/user-item + поиск по дереву
+validate_answer        -> локальная проверка AgentAnswer по evidence сессии
 import_inforesource    -> POST   /api/data/import
 update_vertex          -> PUT    /api/data/update
 delete_inforesource    -> DELETE /api/data/delete
@@ -17,6 +18,9 @@ from typing import Annotated, Any, Literal
 from fastmcp import Context, FastMCP
 from fastmcp.server.lifespan import lifespan
 from pydantic import Field, ValidationError
+
+from iacpaas_agent.schemas import AgentAnswer
+from iacpaas_agent.validator import Verdict, validate
 
 from .client import IacpaasClient
 from .config import ALLOW_WRITE
@@ -43,7 +47,7 @@ from .models import (
 async def client_lifespan(server: FastMCP):
     client = IacpaasClient()
     try:
-        yield {"client": client}
+        yield {"client": client, "evidence": {}}
     finally:
         await client.aclose()
 
@@ -67,6 +71,26 @@ def write_blocked() -> ErrorResult | None:
     if not ALLOW_WRITE:
         return ErrorResult(error="Запись запрещена (IACPAAS_ALLOW_WRITE=false)", kind="auth")
     return None
+
+
+MAX_SESSION_EVIDENCE = 50
+
+
+def evidence_store(ctx: Context) -> dict[str, Any]:
+    stores = ctx.lifespan_context["evidence"]
+    return stores.setdefault(ctx.session_id, {})
+
+
+def record_evidence(ctx: Context, result: Any) -> Any:
+    call_id = str(ctx.request_id)
+    stored = result.model_copy(update={"call_id": call_id})
+    store = evidence_store(ctx)
+    if len(store) >= MAX_SESSION_EVIDENCE:
+        oldest = next(iter(store), None)
+        if oldest is not None:
+            store.pop(oldest, None)
+    store[call_id] = stored.model_dump(mode="json")
+    return stored
 
 
 # ---------- обход экспортированного дерева ----------
@@ -148,9 +172,10 @@ async def get_inforesource(
     if isinstance(doc, ErrorResult):
         return doc
     try:
-        return InfoResourceDocument.model_validate(doc)
+        document = InfoResourceDocument.model_validate(doc)
     except ValidationError as e:
         return ErrorResult(error=f"Ответ IACPaaS не похож на ИР: {e}", kind="validation")
+    return record_evidence(ctx, document)
 
 
 @mcp.tool(annotations=READ, tags={"read"})
@@ -177,7 +202,10 @@ async def get_subgraph(
             edges.append(GraphEdge(source=cp, target=_join(cp, _segment(child)), rcomment=child.get("rcomment")))
     included = {n.concept_path for n in nodes}
     edges = [e for e in edges if e.target in included]
-    return Subgraph(path=path, start=_norm(start), depth=depth, nodes=nodes, edges=edges, truncated=truncated)
+    return record_evidence(
+        ctx,
+        Subgraph(path=path, start=_norm(start), depth=depth, nodes=nodes, edges=edges, truncated=truncated),
+    )
 
 
 @mcp.tool(annotations=READ, tags={"read"})
@@ -192,7 +220,10 @@ async def count_graph(ctx: Context, path: IrPath, start: ConceptPath = "") -> Gr
         entries += 1
         # Повторно использованная вершина (link) встречается в дереве снова, но вершиной считается один раз
         ids.add(vertex.get("id", id(vertex)))
-    return GraphCounts(path=path, start=_norm(start), nodes=len(ids), edges=entries - 1)
+    return record_evidence(
+        ctx,
+        GraphCounts(path=path, start=_norm(start), nodes=len(ids), edges=entries - 1),
+    )
 
 
 @mcp.tool(annotations=READ, tags={"read"})
@@ -216,9 +247,18 @@ async def query_graph(
         hay = str(field).casefold()
         if (hay == needle) if exact else (needle in hay):
             matches.append(to_node(vertex, cp, mp, d))
-    return QueryResult(
-        path=path, query=query, matches=matches[:limit], total=len(matches), truncated=len(matches) > limit
+    return record_evidence(
+        ctx,
+        QueryResult(
+            path=path, query=query, matches=matches[:limit], total=len(matches), truncated=len(matches) > limit
+        ),
     )
+
+
+@mcp.tool(annotations=READ, tags={"read", "validation"})
+async def validate_answer(ctx: Context, answer: AgentAnswer) -> Verdict:
+    """Проверить AgentAnswer по результатам read-тулзов текущей MCP-сессии."""
+    return validate(answer, evidence_store(ctx))
 
 
 # ---------- write ----------

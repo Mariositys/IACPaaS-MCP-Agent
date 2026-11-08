@@ -1,6 +1,7 @@
 """MCP-сервер IACPaaS: тулзы поверх API импорта-экспорта платформы.
 
 MCP tool               -> операция IACPaaS
+list_inforesources     -> локальный catalog.json
 get_inforesource       -> GET    /api/data/export/user-item
 get_subgraph           -> GET    /api/data/export/user-item (start-target-concept-path, export-depth)
 count_graph            -> GET    /api/data/export/user-item + подсчет по дереву
@@ -13,6 +14,7 @@ delete_inforesource    -> DELETE /api/data/delete
 
 import re
 from collections.abc import Iterator
+from contextlib import suppress
 from typing import Annotated, Any, Literal
 
 from fastmcp import Context, FastMCP
@@ -22,9 +24,12 @@ from pydantic import Field, ValidationError
 from iacpaas_agent.schemas import AgentAnswer
 from iacpaas_agent.validator import Verdict, validate
 
+from .catalog import find_entry, list_entries, remove_entry, upsert_entry
 from .client import IacpaasClient
 from .config import ALLOW_WRITE
 from .models import (
+    CatalogEntry,
+    CatalogListing,
     ConceptPath,
     DeleteMode,
     Depth,
@@ -125,11 +130,39 @@ def walk(
         )
 
 
+async def export_checked(ctx: Context, path: str, **kwargs: Any) -> dict[str, Any] | ErrorResult:
+    try:
+        entry = find_entry(path)
+    except Exception as e:  # noqa: BLE001 - ошибка файла возвращается клиенту
+        return ErrorResult(error=f"catalog.json: {e}", kind="platform")
+    if entry is None:
+        return ErrorResult(
+            error=f"Ресурс '{path}' отсутствует в catalog.json. Сначала вызовите list_inforesources.",
+            kind="not_found",
+        )
+    doc = await client(ctx).export(path, **kwargs)
+    if isinstance(doc, ErrorResult):
+        return doc
+    if not isinstance(doc, dict):
+        return ErrorResult(error="Ответ IACPaaS не является объектом", kind="platform")
+    if entry.resource_id and str(doc.get("code")) != entry.resource_id:
+        return ErrorResult(
+            error=f"Ответ не соответствует resource_id каталога для '{path}'",
+            kind="validation",
+        )
+    if entry.title and doc.get("title") != entry.title:
+        return ErrorResult(
+            error=f"Ответ не соответствует title каталога для '{path}'",
+            kind="validation",
+        )
+    return doc
+
+
 async def export_from(
     ctx: Context, path: str, start: str, depth: int | None
 ) -> Iterator[tuple[dict[str, Any], str, str, int]] | ErrorResult:
     """Экспортировать ИР от вершины start и вернуть обход ее поддерева."""
-    doc = await client(ctx).export(path, start_concept_path=start or None, depth=depth)
+    doc = await export_checked(ctx, path, start_concept_path=start or None, depth=depth)
     if isinstance(doc, ErrorResult):
         return doc
     target = _norm(start)
@@ -159,6 +192,18 @@ def to_node(vertex: dict[str, Any], concept_path: str, metaconcept_path: str, de
 
 
 @mcp.tool(annotations=READ, tags={"read"})
+async def list_inforesources(
+    query: Annotated[str, Field(max_length=200, description="Подстрока title или path")] = "",
+    limit: Annotated[int, Field(ge=1, le=50, description="Максимум ресурсов")] = 20,
+) -> CatalogListing | ErrorResult:
+    """Найти ресурс в локальном catalog.json. Это не живой список фонда IACPaaS."""
+    try:
+        return list_entries(query, limit)
+    except Exception as e:  # noqa: BLE001 - ошибка файла возвращается клиенту
+        return ErrorResult(error=f"catalog.json: {e}", kind="platform")
+
+
+@mcp.tool(annotations=READ, tags={"read"})
 async def get_inforesource(
     ctx: Context,
     path: IrPath,
@@ -167,7 +212,7 @@ async def get_inforesource(
 ) -> InfoResourceDocument | ErrorResult:
     """Получить ИР: metadata - сведения и корень без потомков, json - весь ИР."""
     depth = 0 if format == "metadata" else None
-    doc = await client(ctx).export(path, json_type, depth=depth)
+    doc = await export_checked(ctx, path, json_type=json_type, depth=depth)
     if isinstance(doc, ErrorResult):
         return doc
     try:
@@ -288,9 +333,18 @@ async def import_inforesource(
     data = await client(ctx).import_(folder, resource.to_import_dict(), clear_if_exists)
     if isinstance(data, ErrorResult):
         return data
-    return record_evidence(
+    result = record_evidence(
         ctx, OperationResult(success=True, operation="import", path=path, code=data.get("code"))
     )
+    with suppress(Exception):
+        upsert_entry(
+            CatalogEntry(
+                resource_id=str(data.get("code") or ""),
+                title=resource.title,
+                path=path,
+            )
+        )
+    return result
 
 
 @mcp.tool(annotations=WRITE, tags={"write"})
@@ -362,6 +416,10 @@ async def delete_inforesource(
     data = await client(ctx).delete(path, mode, concept_path, metaconcept_path)
     if isinstance(data, ErrorResult):
         return data
-    return record_evidence(
+    result = record_evidence(
         ctx, OperationResult(success=True, operation=mode, path=path, code=data.get("code"))
     )
+    if mode in {"deleteIR", "trashIR", "clearIR"}:
+        with suppress(Exception):
+            remove_entry(path)
+    return result

@@ -11,7 +11,7 @@ uv run iacpaas-mcp
 ```
 
 Ожидается: версия `0.1.0`, сервер стартует в stdio. В MCP Inspector видно
-8 тулзов, у write-тулзов есть `confirm`.
+9 тулзов, у write-тулзов есть `confirm`.
 
 ## 2. Чтение ИР
 
@@ -68,12 +68,14 @@ uv run iacpaas-agent "Сколько вершин в ИР «Пример»?"
 
 Открыть `IACPaaS-MCP-Agent`, выполнить `uv sync`, выбрать агента **IACPaaS**.
 
+- «Найди ресурс «Пример»» - вызов `list_inforesources`.
 - «Сколько вершин в ИР «Пример»?» - вызов `count_graph`.
 - «Найди вершину «Наблюдение» в ИР «Пример»» - вызов `query_graph`.
 - «Покажи подграф ИР «Пример» от вершины «Наблюдение» глубиной 2» - вызов `get_subgraph`.
 
-Доступны 4 read-only тулза, `validate_answer` и 3 write-тулза. После чтения агент
-обязан вызвать `validate_answer` с `AgentAnswer`, где каждый claim ссылается на
+Доступны 5 read-only тулзов (включая `list_inforesources`), `validate_answer` и
+3 write-тулза. После чтения агент обязан вызвать `validate_answer` с `AgentAnswer`,
+где каждый claim ссылается на
 `call_id` из результата и JSON Pointer. При `ok=false` агент исправляет ответ и
 повторяет. Модель может пропустить вызов: нативный custom agent не принуждает к нему.
 
@@ -82,7 +84,7 @@ uv run iacpaas-agent "Сколько вершин в ИР «Пример»?"
 `IACPAAS_ALLOW_WRITE=true`; иначе возвращается `kind="auth"`.
 
 Диагностика: `uv run iacpaas-mcp --version` проверяет запуск, MCP Inspector показывает
-8 тулзов, а ошибки приходят как `ErrorResult` с `kind` (`auth`, `not_found`,
+9 тулзов, а ошибки приходят как `ErrorResult` с `kind` (`auth`, `not_found`,
 `platform`, `validation`). Если Copilot не видит сервер, проверьте `.vscode/mcp.json`
 и Output канала MCP/Copilot.
 

@@ -188,3 +188,16 @@ ErrorKind = Literal["not_found", "auth", "platform", "timeout", "validation"]
 class ErrorResult(BaseModel):
     error: str
     kind: ErrorKind
+
+
+class CatalogEntry(BaseModel):
+    resource_id: str = Field("", description="ID ресурса в IACPaaS, если известен")
+    title: str = Field(min_length=1, description="Имя инфоресурса")
+    path: str = Field(min_length=1, description="Путь внутри «Мой Фонд» без e-mail и префикса")
+
+
+class CatalogListing(BaseModel):
+    source: Literal["configured_catalog"] = "configured_catalog"
+    resources: list[CatalogEntry]
+    total_matches: int
+    truncated: bool

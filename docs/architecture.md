@@ -14,6 +14,7 @@ flowchart LR
   S --> A[LangGraph-агент]
   W --> A
   A -->|MCP, stdio| M
+  M -->|list/path gate| K[(catalog.json)]
   M -->|JSON/HTTP| P[(IACPaaS JSON API)]
 ```
 
@@ -54,8 +55,10 @@ flowchart LR
 | Модуль | Назначение |
 |---|---|
 | `src/iacpaas_mcp/server.py` | MCP-тулзы, проверки ошибок, подтверждение записи |
+| `src/iacpaas_mcp/catalog.py` | локальный `catalog.json`: поиск, проверка и обновление |
 | `src/iacpaas_mcp/client.py` | HTTP-адаптер к IACPaaS, авторизация, `ErrorResult` |
 | `src/iacpaas_mcp/models.py` | Pydantic-модели входов/выходов тулзов |
+| `catalog.json` | список доступных ресурсов: `resource_id`, `title`, `path` |
 | `src/iacpaas_mcp/config.py` | константы, базовый URL, секреты из `.env`/окружения |
 | `src/iacpaas_agent/agent.py` | LangGraph-цикл, обертки MCP-тулзов, модель |
 | `src/iacpaas_agent/schemas.py` | `AgentAnswer`, `Claim`, `Source` |

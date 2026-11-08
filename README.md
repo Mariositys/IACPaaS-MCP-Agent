@@ -43,7 +43,31 @@ Write-тулзы без `confirm=true` возвращают план опера�
 npx -y @modelcontextprotocol/inspector uv run iacpaas-mcp
 ```
 
-В Inspector видно 8 тулзов и их схемы. Без ключей IACPaaS чтения вернут `kind="auth"`.
+В Inspector видно 9 тулзов и их схемы. Без ключей IACPaaS чтения вернут `kind="auth"`.
+
+## Каталог ресурсов
+
+`catalog.json` — локальный список доступных ИР. Формат:
+
+```json
+[
+  {
+    "resource_id": "",
+    "title": "Пример",
+    "path": "папка/Пример"
+  }
+]
+```
+
+`list_inforesources` ищет по `title` и `path`. Чтение разрешено только для пути,
+который есть в каталоге; импорт и удаление обновляют каталог автоматически.
+Путь можно переопределить через `IACPAAS_CATALOG`. В репозитории лежит пример
+`папка/Пример` — замените его на реальный ресурс.
+
+Для тестов есть `fixtures/mock-agent-ir.json`: 17 вершин, три раздела,
+наблюдения, оборудование и текст методики. Импортируйте его в папку `Загрузки`;
+после успешного импорта в каталоге появится `Загрузки/Мок-ИР`. Перед живым
+импортом замените `ontology` и `meta` на существующие в вашем фонде.
 
 ## Агент
 
@@ -110,25 +134,31 @@ Write-операции доступны только при `IACPAAS_ALLOW_WRITE
 нативный custom agent не гарантирует вызов: жёсткое принуждение есть только
 в режимах с completion tool.
 
-Доступны 4 read-only тулза, `validate_answer` и 3 write-тулза. Запись выполняется
-только при `IACPAAS_ALLOW_WRITE=true`; перед `confirm=true` агент обязан показать
-план и получить явное подтверждение.
+Доступны 5 read-only тулзов (включая `list_inforesources`), `validate_answer` и
+3 write-тулза. Сначала агент ищет ресурс через `list_inforesources` по локальному
+`catalog.json` и использует точный `path`; если ресурса нет в каталоге, чтение
+отклоняется. Запись выполняется только при `IACPAAS_ALLOW_WRITE=true`; перед
+`confirm=true` агент обязан показать план и получить явное подтверждение.
 
 Примеры запросов:
+- «Найди ресурс «Пример»» - `list_inforesources`.
 - «Сколько вершин в ИР «Пример»?» - `count_graph`.
 - «Найди вершину «Наблюдение» в ИР «Пример»» - `query_graph`.
 - «Покажи подграф ИР «Пример» от вершины «Наблюдение» глубиной 2» - `get_subgraph`.
 
 Диагностика: `uv run iacpaas-mcp --version` проверяет запуск сервера, MCP Inspector
-показывает 8 тулзов и их схемы, включая `validate_answer`. Ошибки чтения приходят
-как `ErrorResult` с полем `kind` (`auth`, `not_found`, `platform`, `validation`);
-при проблемах с агентом проверьте Output канала Copilot и `.vscode/mcp.json`.
+показывает 9 тулзов и их схемы, включая `list_inforesources` и `validate_answer`.
+Ошибки чтения приходят как `ErrorResult` с полем `kind` (`auth`, `not_found`,
+`platform`, `validation`); при проблемах с агентом проверьте Output канала Copilot
+и `.vscode/mcp.json`.
 
 ## Структура
 
 - `src/iacpaas_mcp` - MCP-сервер;
 - `src/iacpaas_agent` - LangGraph-агент и валидатор;
 - `src/iacpaas_web` - браузерный чат на FastAPI и SQLite;
+- `catalog.json` - локальный каталог ресурсов для `list_inforesources`;
+- `fixtures/mock-agent-ir.json` - тестовый ИР на 17 вершин;
 - `docs` - архитектура, сценарии, соответствие API и решения;
 - `.vscode/mcp.json`, `.github/agents/iacpaas.agent.md` - режим VS Code.
 

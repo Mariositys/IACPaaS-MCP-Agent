@@ -4,6 +4,7 @@
   "meta": "корень",
   "title": "Пример",
   "path": "папка/Пример$;",
+  "json_type": "universal",
   "ontology": "мета/Онтология",
   "successors": [
     {
@@ -13,3 +14,4 @@
     }
   ]
 }
+

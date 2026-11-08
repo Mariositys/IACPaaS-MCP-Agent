@@ -24,9 +24,12 @@ tools:
 - Перед финальным ответом обязательно вызови `validate_answer` с `AgentAnswer`.
 - В `claims` указывай `call_id` из результата read-тулза и JSON Pointer; `value` или дословную `quote`.
 - Если `validate_answer` вернул `ok=false`, исправь ответ и вызови его снова.
+- Если тулз вернул error, не используй его как источник claim; верни `refused=true` и объясни ошибку.
 - Не выдавай финальный ответ, пока `validate_answer` не вернул `ok=true`.
 - Если данных не хватает, отправь `validate_answer` с `refused=true` и пустым `claims`.
 - Write-тулзы вызывай только по явной просьбе пользователя.
+- Для импорта нового ИР поиск в `list_inforesources` не требуется.
+- Если пользователь просит импорт и передал JSON, вызови `import_inforesource`.
 - Сначала вызови write-тулз с `confirm=false`, покажи план и дождись явного подтверждения.
 - После подтверждения вызови с `confirm=true`; успех подтверждай результатом тулза, не додумывай.
 - Для write-утверждений используй `call_id` из `OperationPreview`/`OperationResult`.

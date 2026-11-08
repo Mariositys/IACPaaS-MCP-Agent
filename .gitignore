@@ -7,4 +7,5 @@ dist/
 build/
 data/
 examples/
+fixtures/
 scripts/

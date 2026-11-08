@@ -30,6 +30,7 @@ API_KEY = os.getenv("IACPAAS_AGENT_API_KEY")
 MAX_STEPS = 8
 MAX_ATTEMPTS = 3
 AGENT_INTERNAL_TOOLS = {"validate_answer"}
+WRITE_TOOLS = {"import_inforesource", "update_vertex", "delete_inforesource"}
 
 CONTEXT_LIMIT_TOKENS = 128_000
 OUTPUT_RESERVE_TOKENS = 8_000
@@ -215,6 +216,13 @@ def is_refused_message(message: dict[str, Any]) -> bool:
     return isinstance(answer, dict) and bool(answer.get("refused"))
 
 
+def has_write_call(message: dict[str, Any]) -> bool:
+    calls = message.get("calls")
+    return isinstance(calls, list) and any(
+        isinstance(call, dict) and call.get("tool") in WRITE_TOOLS for call in calls
+    )
+
+
 def message_block(message: dict[str, Any], index: int) -> tuple[str, dict[str, Any]]:
     message_id = message.get("message_id") or index
     question = str(message.get("question", ""))[:500]
@@ -227,6 +235,7 @@ def message_block(message: dict[str, Any], index: int) -> tuple[str, dict[str, A
         calls = []
 
     call_ids = []
+    call_arguments = []
     evidence = {}
     for call in calls[:10]:
         old_id = call.get("call_id")
@@ -235,12 +244,21 @@ def message_block(message: dict[str, Any], index: int) -> tuple[str, dict[str, A
         new_id = f"m{message_id}_{old_id}"
         evidence[new_id] = call.get("result")
         call_ids.append(new_id)
+        call_arguments.append(
+            {
+                "call_id": new_id,
+                "tool": call.get("tool"),
+                "args": call.get("args", {}),
+            }
+        )
 
     block = "\n".join(
         [
             f"Ход m{message_id}. Вопрос: {question}",
             f"Ответ: {text}",
             f"ID источников: {', '.join(call_ids) or 'нет'}",
+            "Аргументы вызовов:",
+            json.dumps(call_arguments, ensure_ascii=False, indent=2, sort_keys=True, default=str),
             "Источники:",
             json.dumps(evidence, ensure_ascii=False, indent=2, sort_keys=True, default=str),
         ]
@@ -254,7 +272,7 @@ def prepare_history(
     """Выбрать новые сообщения, помещающиеся в бюджет контекста."""
     candidates = []
     for index, message in enumerate(history or [], start=1):
-        if not is_refused_message(message):
+        if not is_refused_message(message) or has_write_call(message):
             candidates.append(message_block(message, index))
 
     selected = []

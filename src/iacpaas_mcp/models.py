@@ -172,12 +172,14 @@ class OperationResult(BaseModel):
     operation: str
     path: str
     code: str | None = Field(None, description="Код ИР, который вернула платформа")
+    call_id: str = Field("", description="ID вызова для validate_answer")
 
 
 class OperationPreview(BaseModel):
     operation: str
     path: str
     details: dict[str, Any] = Field(default_factory=dict)
+    call_id: str = Field("", description="ID вызова для validate_answer")
 
 
 ErrorKind = Literal["not_found", "auth", "platform", "timeout", "validation"]

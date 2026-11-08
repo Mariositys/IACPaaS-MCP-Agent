@@ -73,19 +73,18 @@ def write_blocked() -> ErrorResult | None:
     return None
 
 
-MAX_SESSION_EVIDENCE = 50
+MAX_EVIDENCE = 50
 
 
 def evidence_store(ctx: Context) -> dict[str, Any]:
-    stores = ctx.lifespan_context["evidence"]
-    return stores.setdefault(ctx.session_id, {})
+    return ctx.lifespan_context["evidence"]
 
 
 def record_evidence(ctx: Context, result: Any) -> Any:
     call_id = str(ctx.request_id)
     stored = result.model_copy(update={"call_id": call_id})
     store = evidence_store(ctx)
-    if len(store) >= MAX_SESSION_EVIDENCE:
+    if len(store) >= MAX_EVIDENCE:
         oldest = next(iter(store), None)
         if oldest is not None:
             store.pop(oldest, None)
@@ -275,10 +274,13 @@ async def import_inforesource(
     """Создать ИР импортом JSON. Без confirm возвращает план операции и ничего не меняет."""
     path = _join(folder, resource.title)
     if not confirm:
-        return OperationPreview(
-            operation="import",
-            path=path,
-            details={"folder": folder, "title": resource.title, "clear_if_exists": clear_if_exists},
+        return record_evidence(
+            ctx,
+            OperationPreview(
+                operation="import",
+                path=path,
+                details={"folder": folder, "title": resource.title, "clear_if_exists": clear_if_exists},
+            ),
         )
     blocked = write_blocked()
     if blocked:
@@ -286,7 +288,9 @@ async def import_inforesource(
     data = await client(ctx).import_(folder, resource.to_import_dict(), clear_if_exists)
     if isinstance(data, ErrorResult):
         return data
-    return OperationResult(success=True, operation="import", path=path, code=data.get("code"))
+    return record_evidence(
+        ctx, OperationResult(success=True, operation="import", path=path, code=data.get("code"))
+    )
 
 
 @mcp.tool(annotations=WRITE, tags={"write"})
@@ -301,15 +305,18 @@ async def update_vertex(
 ) -> OperationResult | OperationPreview | ErrorResult:
     """Изменить метку и/или комментарий вершины. Без confirm возвращает план операции."""
     if not confirm:
-        return OperationPreview(
-            operation="update",
-            path=path,
-            details={
-                "concept_path": concept_path,
-                "metaconcept_path": metaconcept_path,
-                "mark": mark,
-                "comment": comment,
-            },
+        return record_evidence(
+            ctx,
+            OperationPreview(
+                operation="update",
+                path=path,
+                details={
+                    "concept_path": concept_path,
+                    "metaconcept_path": metaconcept_path,
+                    "mark": mark,
+                    "comment": comment,
+                },
+            ),
         )
     blocked = write_blocked()
     if blocked:
@@ -317,7 +324,9 @@ async def update_vertex(
     data = await client(ctx).update(path, concept_path, metaconcept_path, mark, comment)
     if isinstance(data, ErrorResult):
         return data
-    return OperationResult(success=True, operation="update", path=path, code=data.get("code"))
+    return record_evidence(
+        ctx, OperationResult(success=True, operation="update", path=path, code=data.get("code"))
+    )
 
 
 @mcp.tool(annotations=WRITE, tags={"write"})
@@ -336,13 +345,16 @@ async def delete_inforesource(
     if mode.endswith("SubGraph") and (concept_path is None or metaconcept_path is None):
         return ErrorResult(error=f"Для {mode} нужны concept_path и metaconcept_path", kind="validation")
     if not confirm:
-        return OperationPreview(
-            operation=mode,
-            path=path,
-            details={
-                "concept_path": concept_path,
-                "metaconcept_path": metaconcept_path,
-            },
+        return record_evidence(
+            ctx,
+            OperationPreview(
+                operation=mode,
+                path=path,
+                details={
+                    "concept_path": concept_path,
+                    "metaconcept_path": metaconcept_path,
+                },
+            ),
         )
     blocked = write_blocked()
     if blocked:
@@ -350,4 +362,6 @@ async def delete_inforesource(
     data = await client(ctx).delete(path, mode, concept_path, metaconcept_path)
     if isinstance(data, ErrorResult):
         return data
-    return OperationResult(success=True, operation=mode, path=path, code=data.get("code"))
+    return record_evidence(
+        ctx, OperationResult(success=True, operation=mode, path=path, code=data.get("code"))
+    )

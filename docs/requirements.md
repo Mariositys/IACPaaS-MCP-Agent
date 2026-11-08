@@ -12,9 +12,10 @@
 | Подтверждение мутаций | `confirm=false` -> `OperationPreview` | сценарий 5 |
 | Диагностируемые ошибки | `ErrorResult` с `kind` | сценарии 2, 4, 5 |
 | Режимы запуска | `.vscode/mcp.json`, `.github/agents/iacpaas.agent.md`, CLI, веб-чат | сценарии 6, 8, 10 |
-| Валидация в VS Code (native) | `validate_answer` в `server.py`, evidence-журнал сессии | сценарий 8: агент вызывает тулз; при `ok=false` исправляет ответ. Жёсткой гарантии вызова нет |
+| Запись в VS Code и веб-чате | write-тулзы в MCP, `IACPAAS_ALLOW_WRITE`, `confirm=false` -> план, `confirm=true` -> мутация | сценарии 5, 8, 10 |
+| Валидация в VS Code (native) | `validate_answer` в `server.py`, evidence-журнал процесса | сценарий 8: агент вызывает тулз; при `ok=false` исправляет ответ. Жёсткой гарантии вызова нет |
 | Переиспользование MCP в веб-чате | `AgentRuntime` в `agent.py`, запуск в `lifespan` | сценарий 10: MCP-процесс один на сервер, второй запрос не создает новый |
-| Браузерный чат | `src/iacpaas_web/app.py`, `index.html` | сценарий 10: ответ, источники, read-only |
+| Браузерный чат | `src/iacpaas_web/app.py`, `index.html` | сценарий 10: ответ, источники, write при `ALLOW_WRITE` |
 | Хранение чатов | `src/iacpaas_web/store.py`, SQLite | сценарий 10: история после F5 и список чатов |
 | История диалога | `run_agent(..., history=...)`, ID `m{message_id}_...` | сценарий 11: follow-up проверяется по evidence |
 | Лимит контекста 128k | константы в `agent.py`, `prepare_history` | сценарий 13: лишние ходы не отправляются |

@@ -82,7 +82,7 @@ async def chat(request: ChatRequest, http_request: Request) -> Any:
     runtime = getattr(http_request.app.state, "agent_runtime", None)
 
     try:
-        result = await run_agent(request.question, read_only=True, history=history, runtime=runtime)
+        result = await run_agent(request.question, read_only=False, history=history, runtime=runtime)
     except Exception as e:  # noqa: BLE001 - ошибка показывается в чате
         message = str(e)
         lower = message.casefold()

@@ -378,7 +378,26 @@ def build_graph(model: ChatOpenAI, tools: list[StructuredTool]):
         return {"verdict": verdict, "reasons": verdict.reasons}
 
     def fail_node(state: AgentState) -> dict[str, Any]:
-        answer = fail_safe_answer()
+        previews = [
+            value
+            for call_id, value in state["evidence"].items()
+            if not call_id.startswith("m")
+            and isinstance(value, dict)
+            and "operation" in value
+            and "success" not in value
+        ]
+        if previews:
+            preview = previews[-1]
+            answer = AgentAnswer(
+                answer=(
+                    f"Подготовлена операция {preview.get('operation')} для «{preview.get('path')}». "
+                    "Изменения не применены. Подтвердите выполнение."
+                ),
+                claims=[],
+                requires_confirmation=True,
+            )
+        else:
+            answer = fail_safe_answer()
         return {"answer": answer, "verdict": Verdict(ok=True, reasons=[]), "final": answer.answer}
 
     def route_agent(state: AgentState) -> str:

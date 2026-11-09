@@ -2,6 +2,7 @@
 
 import ast
 import json
+import re
 import unicodedata
 from typing import Any
 
@@ -138,15 +139,41 @@ def validate(answer: AgentAnswer | str | dict[str, Any], evidence: dict[str, Any
         return Verdict(ok=False, reasons=["ответ не является AgentAnswer"])
 
     reasons: list[str] = []
-    if not answer.refused and not answer.claims:
+    if not answer.refused and not answer.requires_confirmation and not answer.claims:
         reasons.append("в ответе нет утверждений с источниками")
     if not answer.refused and not evidence:
         reasons.append("агент не вызвал ни одного тулза")
 
+    reasons.extend(_check_write_preview(answer, evidence))
     for claim in answer.claims:
         reasons.extend(_check_claim(claim, evidence))
 
     return Verdict(ok=not reasons, reasons=reasons)
+
+
+def _check_write_preview(answer: AgentAnswer, evidence: dict[str, Any]) -> list[str]:
+    def is_preview(value: Any) -> bool:
+        return isinstance(value, dict) and "operation" in value and "success" not in value
+
+    all_previews = [call_id for call_id, value in evidence.items() if is_preview(value)]
+    source_ids = {source.call_id for claim in answer.claims for source in claim.sources}
+    relevant_previews = [call_id for call_id in source_ids if is_preview(evidence.get(call_id))]
+
+    text = " ".join([answer.answer, *(claim.statement for claim in answer.claims)]).casefold()
+    success_pattern = re.compile(
+        r"\b(?:удал[её]н(?:а|о|ы)?|измен[её]н(?:а|о|ы)?|"
+        r"выполнен(?:а|о|ы)?|обновл[её]н(?:а|о|ы)?|успешно)\b"
+    )
+    if answer.requires_confirmation:
+        if not all_previews:
+            return ["requires_confirmation=true без OperationPreview"]
+        if success_pattern.search(text):
+            return ["OperationPreview не является выполнением операции"]
+        return []
+
+    if relevant_previews and success_pattern.search(text):
+        return ["write-тулз вернул OperationPreview; нельзя утверждать, что операция выполнена"]
+    return []
 
 
 def _check_claim(claim: Claim, evidence: dict[str, Any]) -> list[str]:

@@ -27,3 +27,7 @@ class AgentAnswer(BaseModel):
     answer: str = Field(min_length=1)
     claims: list[Claim] = Field(default_factory=list)
     refused: bool = Field(False, description="True, если данных для ответа не хватило")
+    requires_confirmation: bool = Field(
+        False,
+        description="True, если write-тулз вернул OperationPreview и нужно подтверждение пользователя",
+    )

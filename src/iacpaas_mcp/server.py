@@ -399,6 +399,21 @@ async def delete_inforesource(
     data = await client(ctx).delete(path, mode, concept_path, metaconcept_path)
     if isinstance(data, ErrorResult):
         return data
+    if mode in {"deleteIR", "trashIR"}:
+        check = await client(ctx).export(path)
+        if not isinstance(check, ErrorResult):
+            return ErrorResult(
+                error=(
+                    f"IACPaaS сообщил об успешном {mode} для '{path}', "
+                    "но ресурс всё ещё доступен через export"
+                ),
+                kind="platform",
+            )
+        if check.kind != "not_found":
+            return ErrorResult(
+                error=f"Не удалось подтвердить удаление '{path}': {check.error}",
+                kind=check.kind,
+            )
     result = record_evidence(
         ctx, OperationResult(success=True, operation=mode, path=path, code=data.get("code"))
     )

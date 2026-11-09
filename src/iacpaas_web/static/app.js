@@ -78,6 +78,7 @@ function formatDate(timestamp) {
 }
 
 function badge(data) {
+  if (data.answer && data.answer.requires_confirmation) return ["Нужно подтверждение", "badge-yellow"];
   if (data.answer && data.answer.refused) return ["Нужны данные", "badge-yellow"];
   if (data.verdict && data.verdict.ok) return ["Проверено", "badge-green"];
   return ["Не подтверждено", "badge-red"];

@@ -121,7 +121,8 @@ class IacpaasClient:
             details = data.get("explanation") or data.get("explanationSafe")
             message = f"IACPaaS ({url}): {data.get('error') or 'ошибка'}" + (f". {details}" if details else "")
             text = message.casefold()
-            kind: ErrorKind = "not_found" if "не найден" in text or "not found" in text else "platform"
+            missing = ("не найден", "not found", "неверный путь", "invalid path")
+            kind: ErrorKind = "not_found" if any(marker in text for marker in missing) else "platform"
             return _err(message, kind)
         return data
 

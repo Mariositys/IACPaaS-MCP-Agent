@@ -158,19 +158,11 @@ Write-операции доступны только при `IACPAAS_ALLOW_WRITE
 - `src/iacpaas_agent` - LangGraph-агент и валидатор;
 - `src/iacpaas_web` - браузерный чат на FastAPI и SQLite;
 - `catalog.txt` - локальный каталог ресурсов для `list_inforesources`;
-- `docs` - архитектура, сценарии, соответствие API и решения;
+- `docs` - архитектура, сценарии и соответствие API;
 - `.vscode/mcp.json`, `.github/agents/iacpaas.agent.md` - режим VS Code.
 
 ## Документация
 
 - `docs/architecture.md` - схема режимов и цикла агента;
 - `docs/scenarios.md` - ручные сценарии проверки;
-- `docs/tool-mapping.md` - MCP-тулз -> операция IACPaaS;
-- `docs/requirements.md` - требование -> реализация -> проверка;
-- `docs/decisions.md` - принятые решения и ограничения.
-
-## Статус
-
-M0–M7 и веб-чат готовы; read и delete проверены вручную, update ограничен ошибкой
-платформы. Отложено до v2: сжатие ответов, автотесты, LLM-judge.
-
+- `docs/tool-mapping.md` - MCP-тулз -> операция IACPaaS.

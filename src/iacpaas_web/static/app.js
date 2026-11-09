@@ -1,14 +1,15 @@
 const messages = document.getElementById("messages");
+const main = document.querySelector(".main");
 const empty = document.getElementById("empty");
 const form = document.getElementById("composer");
 const input = document.getElementById("question");
 const send = document.getElementById("send");
 const chatList = document.getElementById("chat-list");
 const modelPill = document.getElementById("model");
-const promptPill = document.getElementById("prompt");
 const newChat = document.getElementById("new-chat");
 const callRegistry = new Map();
 let currentDialogueId = null;
+let sending = false;
 
 function h(tag, className, text) {
   const node = document.createElement(tag);
@@ -18,6 +19,7 @@ function h(tag, className, text) {
 }
 
 function scrollDown() {
+  syncComposerSpace();
   messages.scrollTop = messages.scrollHeight;
 }
 
@@ -26,16 +28,44 @@ function hideEmpty() {
 }
 
 function resizeInput() {
+  const field = input.closest(".composer-field");
   input.classList.remove("multiline");
+  if (field) field.classList.remove("has-multiline");
   input.style.height = "auto";
   const lineHeight = parseFloat(getComputedStyle(input).lineHeight);
   if (input.scrollHeight > lineHeight * 1.5) {
     input.classList.add("multiline");
+    if (field) field.classList.add("has-multiline");
   }
   input.style.height = "auto";
   const height = Math.min(input.scrollHeight + 2, 160);
   input.style.height = `${height}px`;
   input.style.overflowY = input.scrollHeight + 2 > 160 ? "auto" : "hidden";
+  syncComposerSpace();
+}
+
+function syncComposerSpace() {
+  const row = messages.querySelector(".row");
+  const style = getComputedStyle(messages);
+  const left = parseFloat(style.paddingLeft) || 0;
+  const right = parseFloat(style.paddingRight) || 0;
+  const contentWidth = Math.max(0, messages.clientWidth - left - right);
+
+  if (row && main) {
+    const rowRect = row.getBoundingClientRect();
+    const mainRect = main.getBoundingClientRect();
+    form.style.width = `${rowRect.width}px`;
+    form.style.left = `${rowRect.left - mainRect.left + rowRect.width / 2}px`;
+  } else {
+    form.style.width = `${Math.min(900, contentWidth)}px`;
+    form.style.left = `${left + contentWidth / 2}px`;
+  }
+
+  messages.style.paddingBottom = `${form.offsetHeight + 24}px`;
+}
+
+function updateSendState() {
+  send.disabled = sending || !input.value.trim();
 }
 
 function formatDate(timestamp) {
@@ -48,8 +78,7 @@ function formatDate(timestamp) {
 }
 
 function badge(data) {
-  if (data.answer && data.answer.refused) return ["Нужны данные", "badge-gray"];
-  if (data.verdict && data.verdict.ok && data.attempts > 1) return ["Исправлено", "badge-yellow"];
+  if (data.answer && data.answer.refused) return ["Нужны данные", "badge-yellow"];
   if (data.verdict && data.verdict.ok) return ["Проверено", "badge-green"];
   return ["Не подтверждено", "badge-red"];
 }
@@ -291,10 +320,6 @@ function renderAnswer(data) {
   const answer = data.answer || {};
   bubble.append(h("div", "answer-text", answer.answer || data.final || "Нет ответа."));
 
-  if (data.attempts !== undefined) {
-    bubble.append(h("div", "meta", `попыток: ${data.attempts} · шагов: ${data.steps ?? "?"}`));
-  }
-
   if (answer.claims && answer.claims.length) {
     bubble.append(renderClaims(answer.claims, data.calls));
   }
@@ -348,7 +373,7 @@ async function loadDialogues() {
 }
 
 async function openDialogue(dialogueId) {
-  if (send.disabled) return;
+  if (sending) return;
   try {
     const response = await fetch(`/api/dialogues/${encodeURIComponent(dialogueId)}`);
     if (!response.ok) throw new Error("диалог не найден");
@@ -391,6 +416,7 @@ function openNewChat() {
   empty.style.display = "";
   input.value = "";
   resizeInput();
+  updateSendState();
   input.focus();
   loadDialogues();
 }
@@ -399,7 +425,8 @@ async function ask(question) {
   addUser(question);
   input.value = "";
   resizeInput();
-  send.disabled = true;
+  sending = true;
+  updateSendState();
   newChat.disabled = true;
   const loading = addLoading();
 
@@ -433,8 +460,9 @@ async function ask(question) {
     loading.remove();
     addError(`Сеть: ${error.message}`, "platform");
   } finally {
-    send.disabled = false;
+    sending = false;
     newChat.disabled = false;
+    updateSendState();
     input.focus();
   }
 }
@@ -443,11 +471,9 @@ async function loadHealth() {
   try {
     const response = await fetch("/api/health");
     const data = await response.json();
-    modelPill.textContent = `модель: ${data.model}`;
-    promptPill.textContent = `контракт: v${data.prompt_version}`;
+    modelPill.textContent = data.model;
   } catch {
-    modelPill.textContent = "модель: ?";
-    promptPill.textContent = "контракт: ?";
+    modelPill.textContent = "?";
   }
 }
 
@@ -460,6 +486,7 @@ form.addEventListener("submit", (event) => {
 
 input.addEventListener("input", () => {
   resizeInput();
+  updateSendState();
 });
 
 input.addEventListener("keydown", (event) => {
@@ -480,6 +507,8 @@ document.querySelectorAll(".chip").forEach((chip) => {
 
 loadHealth();
 resizeInput();
+updateSendState();
+window.addEventListener("resize", resizeInput);
 const savedDialogue = localStorage.getItem("iacpaas_dialogue");
 if (savedDialogue) {
   openDialogue(savedDialogue);

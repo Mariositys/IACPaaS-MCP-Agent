@@ -10,10 +10,7 @@
   <header class="topbar">
     <div class="brand">IACPaaS Chat</div>
     <div class="status">
-      <span id="model" class="pill">модель: …</span>
-      <span id="prompt" class="pill">контракт: …</span>
-      <span class="pill">temperature 0</span>
-      <span class="pill">история: SQLite</span>
+      <span id="model" class="pill">…</span>
     </div>
   </header>
 
@@ -39,10 +36,15 @@
       </section>
 
       <form id="composer" class="composer">
-        <textarea id="question" rows="1" placeholder="Введите вопрос..." aria-label="Вопрос"></textarea>
-        <button id="send" type="submit">Отправить</button>
+        <div class="composer-field">
+          <textarea id="question" rows="1" placeholder="Введите вопрос..." aria-label="Вопрос"></textarea>
+          <div class="composer-actions">
+            <button id="send" type="submit" aria-label="Отправить" title="Отправить" disabled>
+              <span class="icon" aria-hidden="true"></span>
+            </button>
+          </div>
+        </div>
       </form>
-      <div class="footnote">История сохраняется в SQLite; в модель уходят только ходы в пределах 128k контекста.</div>
     </main>
   </div>
 

@@ -1,6 +1,5 @@
-"""Локальный каталог доступных инфоресурсов."""
+"""Локальный каталог доступных инфоресурсов: один путь на строку."""
 
-import json
 from pathlib import Path
 
 from .config import CATALOG_PATH
@@ -13,14 +12,29 @@ def normalize_path(value: str) -> str:
     return value.strip().removesuffix("$;").strip("/")
 
 
-def load_entries() -> list[CatalogEntry]:
+def _title_from_path(path: str) -> str:
+    return normalize_path(path).rsplit("/", 1)[-1]
+
+
+def _load_paths() -> list[str]:
     file = CATALOG
     if not file.exists():
         return []
-    raw = json.loads(file.read_text(encoding="utf-8"))
-    if not isinstance(raw, list):
-        raise TypeError("catalog.json должен содержать массив")
-    return [CatalogEntry.model_validate(item) for item in raw]
+    paths: list[str] = []
+    seen: set[str] = set()
+    for line in file.read_text(encoding="utf-8-sig").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        path = normalize_path(line)
+        if path and path not in seen:
+            seen.add(path)
+            paths.append(path)
+    return paths
+
+
+def load_entries() -> list[CatalogEntry]:
+    return [CatalogEntry(title=_title_from_path(path), path=path) for path in _load_paths()]
 
 
 def list_entries(query: str = "", limit: int = 20) -> CatalogListing:
@@ -46,31 +60,25 @@ def find_entry(path: str) -> CatalogEntry | None:
     return None
 
 
-def upsert_entry(entry: CatalogEntry) -> None:
-    entries = load_entries()
-    target = normalize_path(entry.path)
-    for index, current in enumerate(entries):
-        if normalize_path(current.path) == target:
-            entries[index] = entry
-            break
-    else:
-        entries.append(entry)
-    _write(entries)
+def upsert_path(path: str) -> None:
+    paths = _load_paths()
+    target = normalize_path(path)
+    if target and target not in paths:
+        paths.append(target)
+    _write_paths(paths)
 
 
 def remove_entry(path: str) -> None:
     target = normalize_path(path)
-    entries = [entry for entry in load_entries() if normalize_path(entry.path) != target]
-    _write(entries)
+    _write_paths([item for item in _load_paths() if item != target])
 
 
-def _write(entries: list[CatalogEntry]) -> None:
+def _write_paths(paths: list[str]) -> None:
     file = CATALOG
     file.parent.mkdir(parents=True, exist_ok=True)
-    payload = [entry.model_dump(mode="json") for entry in entries]
+    payload = "\n".join(paths)
+    if payload:
+        payload += "\n"
     temporary = file.with_name(file.name + ".tmp")
-    temporary.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    temporary.write_text(payload, encoding="utf-8")
     temporary.replace(file)

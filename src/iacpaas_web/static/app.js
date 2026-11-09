@@ -236,7 +236,15 @@ async function ask(question) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question, dialogue_id: currentDialogueId }),
     });
-    const data = await response.json();
+    const raw = await response.text();
+    let data;
+    try {
+      data = raw ? JSON.parse(raw) : {};
+    } catch {
+      loading.remove();
+      addError(`HTTP ${response.status}: ${raw.slice(0, 500) || "пустой ответ"}`, "platform");
+      return;
+    }
     loading.remove();
     if (!response.ok || data.error) {
       addError(data.error || `HTTP ${response.status}`, data.kind);

@@ -191,8 +191,7 @@ class ErrorResult(BaseModel):
 
 
 class CatalogEntry(BaseModel):
-    resource_id: str = Field("", description="ID ресурса в IACPaaS, если известен")
-    title: str = Field(min_length=1, description="Имя инфоресурса")
+    title: str = Field(description="Имя инфоресурса (последний сегмент path)")
     path: str = Field(min_length=1, description="Путь внутри «Мой Фонд» без e-mail и префикса")
 
 

@@ -50,6 +50,14 @@ class IacpaasClient:
                 return json.loads(result) if isinstance(result, str) else result
             except (TypeError, ValueError):
                 return _err("Не удалось разобрать JSON из ответа IACPaaS", "platform")
+        # Экспорт user-item возвращает {filename, code, data}, где data - JSON-строка ИР
+        if isinstance(data.get("data"), str):
+            try:
+                return json.loads(data["data"].lstrip("\ufeff"))
+            except (TypeError, ValueError):
+                return _err("Не удалось разобрать JSON из ответа IACPaaS", "platform")
+        if isinstance(data.get("data"), dict):
+            return data["data"]
         return data
 
     async def import_(

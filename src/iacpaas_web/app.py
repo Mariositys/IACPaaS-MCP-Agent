@@ -39,6 +39,15 @@ app = FastAPI(title="IACPaaS Chat", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
+@app.exception_handler(Exception)
+async def unhandled_exception(_request: Request, exc: Exception) -> JSONResponse:
+    logger.exception("Необработанная ошибка веб-чата", exc_info=exc)
+    return JSONResponse(
+        status_code=500,
+        content={"error": f"Внутренняя ошибка сервера: {exc}", "kind": "platform"},
+    )
+
+
 class ChatRequest(BaseModel):
     question: str = Field(min_length=1)
     dialogue_id: str | None = None
@@ -77,14 +86,16 @@ async def dialogue(dialogue_id: str) -> Any:
 
 @app.post("/api/chat")
 async def chat(request: ChatRequest, http_request: Request) -> Any:
-    dialogue_id = request.dialogue_id
-    history = store.get_messages(dialogue_id) if dialogue_id and store.get_dialogue(dialogue_id) else []
-    runtime = getattr(http_request.app.state, "agent_runtime", None)
-
     try:
+        dialogue_id = request.dialogue_id
+        history = store.get_messages(dialogue_id) if dialogue_id and store.get_dialogue(dialogue_id) else []
+        runtime = getattr(http_request.app.state, "agent_runtime", None)
         result = await run_agent(request.question, read_only=False, history=history, runtime=runtime)
+        result["dialogue_id"] = store.save_message(dialogue_id, request.question, result)
+        return result
     except Exception as e:  # noqa: BLE001 - ошибка показывается в чате
         message = str(e)
+        logger.exception("Ошибка /api/chat")
         lower = message.casefold()
         if "credentials" in lower or "api_key" in lower or "iacpaas_agent" in lower:
             return JSONResponse(
@@ -98,6 +109,3 @@ async def chat(request: ChatRequest, http_request: Request) -> Any:
                 },
             )
         return JSONResponse(status_code=500, content={"error": message, "kind": "platform"})
-
-    result["dialogue_id"] = store.save_message(dialogue_id, request.question, result)
-    return result

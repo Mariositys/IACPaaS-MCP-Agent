@@ -1,7 +1,7 @@
 """MCP-сервер IACPaaS: тулзы поверх API импорта-экспорта платформы.
 
 MCP tool               -> операция IACPaaS
-list_inforesources     -> локальный catalog.json
+list_inforesources     -> локальный catalog.txt
 get_inforesource       -> GET    /api/data/export/user-item
 get_subgraph           -> GET    /api/data/export/user-item (start-target-concept-path, export-depth)
 count_graph            -> GET    /api/data/export/user-item + подсчет по дереву
@@ -24,11 +24,10 @@ from pydantic import Field, ValidationError
 from iacpaas_agent.schemas import AgentAnswer
 from iacpaas_agent.validator import Verdict, validate
 
-from .catalog import find_entry, list_entries, remove_entry, upsert_entry
+from .catalog import find_entry, list_entries, remove_entry, upsert_path
 from .client import IacpaasClient
 from .config import ALLOW_WRITE
 from .models import (
-    CatalogEntry,
     CatalogListing,
     ConceptPath,
     DeleteMode,
@@ -134,10 +133,10 @@ async def export_checked(ctx: Context, path: str, **kwargs: Any) -> dict[str, An
     try:
         entry = find_entry(path)
     except Exception as e:  # noqa: BLE001 - ошибка файла возвращается клиенту
-        return ErrorResult(error=f"catalog.json: {e}", kind="platform")
+        return ErrorResult(error=f"catalog.txt: {e}", kind="platform")
     if entry is None:
         return ErrorResult(
-            error=f"Ресурс '{path}' отсутствует в catalog.json. Сначала вызовите list_inforesources.",
+            error=f"Ресурс '{path}' отсутствует в catalog.txt. Сначала вызовите list_inforesources.",
             kind="not_found",
         )
     doc = await client(ctx).export(path, **kwargs)
@@ -145,16 +144,6 @@ async def export_checked(ctx: Context, path: str, **kwargs: Any) -> dict[str, An
         return doc
     if not isinstance(doc, dict):
         return ErrorResult(error="Ответ IACPaaS не является объектом", kind="platform")
-    if entry.resource_id and str(doc.get("code")) != entry.resource_id:
-        return ErrorResult(
-            error=f"Ответ не соответствует resource_id каталога для '{path}'",
-            kind="validation",
-        )
-    if entry.title and doc.get("title") != entry.title:
-        return ErrorResult(
-            error=f"Ответ не соответствует title каталога для '{path}'",
-            kind="validation",
-        )
     return doc
 
 
@@ -196,11 +185,11 @@ async def list_inforesources(
     query: Annotated[str, Field(max_length=200, description="Подстрока title или path")] = "",
     limit: Annotated[int, Field(ge=1, le=50, description="Максимум ресурсов")] = 20,
 ) -> CatalogListing | ErrorResult:
-    """Найти ресурс в локальном catalog.json. Это не живой список фонда IACPaaS."""
+    """Найти ресурс в локальном catalog.txt. Это не живой список фонда IACPaaS."""
     try:
         return list_entries(query, limit)
     except Exception as e:  # noqa: BLE001 - ошибка файла возвращается клиенту
-        return ErrorResult(error=f"catalog.json: {e}", kind="platform")
+        return ErrorResult(error=f"catalog.txt: {e}", kind="platform")
 
 
 @mcp.tool(annotations=READ, tags={"read"})
@@ -337,13 +326,7 @@ async def import_inforesource(
         ctx, OperationResult(success=True, operation="import", path=path, code=data.get("code"))
     )
     with suppress(Exception):
-        upsert_entry(
-            CatalogEntry(
-                resource_id=str(data.get("code") or ""),
-                title=resource.title,
-                path=path,
-            )
-        )
+        upsert_path(path)
     return result
 
 

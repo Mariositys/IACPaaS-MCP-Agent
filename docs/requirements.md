@@ -7,7 +7,7 @@
 | Детерминированность, `temperature=0` | `src/iacpaas_agent/agent.py`, `make_model()` | температура зафиксирована; валидатор не использует случайность |
 | Не использовать внутренние знания | `Claim.sources` обязателен; проверка `call_id` и JSON Pointer; ответ без вызовов тулзов отклоняется | сценарий 6, ответ без источника |
 | Сжатие ответов | не реализовано, отложено до v2 | - |
-| Локальный каталог ресурсов | `catalog.json`, `src/iacpaas_mcp/catalog.py`, тулз `list_inforesources` | поиск по `title`/`path`, чтение только пути из каталога |
+| Локальный каталог ресурсов | `catalog.txt`, `src/iacpaas_mcp/catalog.py`, тулз `list_inforesources` | поиск по `title`/`path`, чтение только пути из каталога |
 | Типизированные входы и выходы тулзов | `src/iacpaas_mcp/models.py`, аннотации `server.py` | схемы в `list_tools()` |
 | Разделение read и write | теги и `readOnlyHint`/`destructiveHint` | MCP Inspector |
 | Подтверждение мутаций | `confirm=false` -> `OperationPreview` | сценарий 5 |

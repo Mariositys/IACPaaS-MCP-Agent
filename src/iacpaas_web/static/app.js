@@ -501,6 +501,8 @@ newChat.addEventListener("click", openNewChat);
 document.querySelectorAll(".chip").forEach((chip) => {
   chip.addEventListener("click", () => {
     input.value = chip.dataset.question;
+    resizeInput();
+    updateSendState();
     input.focus();
   });
 });

@@ -25,7 +25,9 @@
 - `compress=true` возвращает zip, поэтому не используется.
 - Таймаут 60 секунд; документация требует не меньше 30.
 - Сервисный API (`run`, `stop`, `running`, `import-run-export`) вне задачи.
-- `mark` у `update_vertex` обязателен.
+- `mark` у `update_vertex` обязателен; тулз меняет только `mark`/`comment`.
+- На текущем стенде `PUT /api/data/update` возвращает `action: updateVertice`,
+  поэтому `update_vertex` завершается ошибкой `kind="platform"`.
 
 ## Авторизация
 

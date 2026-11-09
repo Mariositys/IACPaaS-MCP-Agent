@@ -2,6 +2,7 @@
 
 Автотесты отложены; ниже - проверки, которые можно выполнить вручную.
 Сценарий 1 не требует доступа к IACPaaS, остальные требуют ключ или логин.
+В примерах ниже `<ресурс>` и `<вершина>` замените на значения из `catalog.txt` и результатов тулзов.
 
 ## 1. Сервер поднимается и отдает тулзы
 
@@ -40,6 +41,8 @@ uv run iacpaas-mcp
 
 Ожидается: `OperationPreview` с `operation`, `path`, `details`; платформа не вызывается.
 С `confirm=true` и `IACPAAS_ALLOW_WRITE=false` - `kind="auth"`.
+Сейчас `update_vertex` на стенде возвращает `kind="platform"`: `/api/data/update`
+отклоняет `action: updateVertice`.
 
 ## 6. Агент: ответ по данным
 
@@ -48,7 +51,7 @@ $env:IACPAAS_AGENT_API_KEY = "..."
 $env:IACPAAS_AGENT_MODEL = "..."
 $env:IACPAAS_AGENT_BASE_URL = "https://polza.ai/api/v1"
 $env:IACPAAS_API_KEY = "..."
-uv run iacpaas-agent "Сколько вершин в ИР «Пример»?"
+uv run iacpaas-agent "Сколько вершин в ИР «<ресурс>»?"
 ```
 
 Ожидается: финальный ответ или fail-safe. В веб-чате для этого же вопроса
@@ -68,10 +71,13 @@ uv run iacpaas-agent "Сколько вершин в ИР «Пример»?"
 
 Открыть `IACPaaS-MCP-Agent`, выполнить `uv sync`, выбрать агента **IACPaaS**.
 
-- «Найди ресурс «Пример»» - вызов `list_inforesources`.
-- «Сколько вершин в ИР «Пример»?» - вызов `count_graph`.
-- «Найди вершину «Наблюдение» в ИР «Пример»» - вызов `query_graph`.
-- «Покажи подграф ИР «Пример» от вершины «Наблюдение» глубиной 2» - вызов `get_subgraph`.
+- «Найди ресурс «<ресурс>»» - вызов `list_inforesources`.
+- «Сколько вершин в ИР «<ресурс>»?» - вызов `count_graph`.
+- «Найди вершину «<вершина>» в ИР «<ресурс>»» - вызов `query_graph`.
+- «Покажи подграф ИР «<ресурс>» от вершины «<вершина>» глубиной 2» - вызов `get_subgraph`.
+
+Один и тот же вопрос можно прогнать в CLI (сценарий 6) и в VS Code, чтобы сравнить
+поведение standalone- и IDE-режимов.
 
 Доступны 5 read-only тулзов (включая `list_inforesources`), `validate_answer` и
 3 write-тулза. После чтения агент обязан вызвать `validate_answer` с `AgentAnswer`,
@@ -85,12 +91,12 @@ uv run iacpaas-agent "Сколько вершин в ИР «Пример»?"
 
 Диагностика: `uv run iacpaas-mcp --version` проверяет запуск, MCP Inspector показывает
 9 тулзов, а ошибки приходят как `ErrorResult` с `kind` (`auth`, `not_found`,
-`platform`, `validation`). Если Copilot не видит сервер, проверьте `.vscode/mcp.json`
+`platform`, `timeout`, `validation`). Если Copilot не видит сервер, проверьте `.vscode/mcp.json`
 и Output канала MCP/Copilot.
 
 ## 9. Текстовый факт без числа
 
-Спросить: «Что сказано в описании ИР «Пример»?»
+Спросить: «Что сказано в описании ИР «<ресурс>»?»
 
 Ожидается: в claim есть `quote`, которая дословно встречается в поле `/description`
 результата тулза. Если модель придумала цитату или не указала ни `value`, ни `quote`,
@@ -119,7 +125,8 @@ uv run iacpaas-web
 
 Ожидается: второй ответ учитывает предыдущие ходы из SQLite. Если модель ссылается
 на прошлый вызов, используется ID вида `m1_call_1`; валидатор проверяет его по
-evidence. Отказы и fail-safe в контекст не включаются.
+evidence. Отказы и fail-safe в контекст не включаются; исключение - refused-ход
+с write-вызовом, нужный для подтверждения.
 
 ## 12. Prompt caching
 

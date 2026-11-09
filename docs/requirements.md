@@ -3,7 +3,7 @@
 | Требование | Где реализовано | Как проверить |
 |---|---|---|
 | Валидация ответов нейросети | `src/iacpaas_agent/schemas.py`, `src/iacpaas_agent/validator.py`, узел `validate` | сценарий 6: неверное число и выдуманный путь отклоняются |
-| Битый JSON или неверная схема ответа | `src/iacpaas_agent/agent.py`, `answer_node` | repair до 3 попыток, затем fail-safe |
+| Битый JSON или неверная схема ответа | `src/iacpaas_agent/agent.py`, `answer_node` | 3 попытки ответа (первичная и 2 починки), затем fail-safe |
 | Детерминированность, `temperature=0` | `src/iacpaas_agent/agent.py`, `make_model()` | температура зафиксирована; валидатор не использует случайность |
 | Не использовать внутренние знания | `Claim.sources` обязателен; проверка `call_id` и JSON Pointer; ответ без вызовов тулзов отклоняется | сценарий 6, ответ без источника |
 | Сжатие ответов | не реализовано, отложено до v2 | - |
@@ -19,6 +19,7 @@
 | Браузерный чат | `src/iacpaas_web/app.py`, `index.html` | сценарий 10: ответ, источники, write при `ALLOW_WRITE` |
 | Хранение чатов | `src/iacpaas_web/store.py`, SQLite | сценарий 10: история после F5 и список чатов |
 | История диалога | `run_agent(..., history=...)`, ID `m{message_id}_...` | сценарий 11: follow-up проверяется по evidence |
+| Трасса tool calls для отладки | `run_agent` возвращает `calls`; `store.py` сохраняет их в `messages.calls` | сценарий 10: `calls` остаются в SQLite; в UI - «Технические детали». CLI печатает только final |
 | Лимит контекста 128k | константы в `agent.py`, `prepare_history` | сценарий 13: лишние ходы не отправляются |
 | Prompt caching | стабильный префикс в `agent.py`; `cache_control` для Claude | сценарий 12: `cached_tokens` в usage Polza |
 | Документирование соответствия API | `docs/tool-mapping.md` | таблица тулз -> HTTP |

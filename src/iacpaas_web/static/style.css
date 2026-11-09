@@ -157,6 +157,19 @@ summary { cursor: pointer; font-size: 13px; color: #cbd0d8; }
 .claim-statement { font-size: 13px; font-weight: 600; }
 .claim-meta, .source { margin-top: 4px; font-size: 12px; color: var(--muted); word-break: break-word; }
 .source { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.source-card { margin-top: 10px; }
+.source-head { padding: 8px 10px; border-left: 3px solid var(--accent); border-radius: 6px; background: rgba(255, 255, 255, .03); }
+.source-tool { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 13px; font-weight: 700; color: var(--accent); word-break: break-word; }
+.source-path { margin-top: 3px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; color: var(--muted); word-break: break-word; }
+.source-head-summary { border-left-color: var(--green); }
+.source-head-summary .source-tool { color: var(--green); }
+.source-group { margin-top: 8px; }
+.source-group-title { margin-bottom: 4px; font-size: 12px; font-weight: 600; color: #cbd0d8; }
+.source-fact { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; border-bottom: 1px solid rgba(255, 255, 255, .04); font-size: 12px; }
+.fact-label { color: var(--muted); }
+.fact-value { text-align: right; word-break: break-word; }
+.technical { margin-top: 8px; }
+.technical-line { margin-top: 4px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11px; color: var(--muted); word-break: break-word; }
 
 pre {
   margin: 6px 0 0;

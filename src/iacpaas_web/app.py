@@ -63,7 +63,9 @@ class ChatRequest(BaseModel):
 
 @app.get("/", response_class=HTMLResponse)
 async def index() -> str:
-    return INDEX.read_text(encoding="utf-8")
+    stamp = max((STATIC / name).stat().st_mtime for name in ("app.js", "style.css"))
+    html = INDEX.read_text(encoding="utf-8")
+    return html.replace("{{asset_version}}", str(int(stamp)))
 
 
 @app.get("/api/health")

@@ -7,6 +7,7 @@ const chatList = document.getElementById("chat-list");
 const modelPill = document.getElementById("model");
 const promptPill = document.getElementById("prompt");
 const newChat = document.getElementById("new-chat");
+const callRegistry = new Map();
 let currentDialogueId = null;
 
 function h(tag, className, text) {
@@ -92,25 +93,190 @@ function addError(text, kind) {
   scrollDown();
 }
 
+function plural(count, one, few, many) {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  if (mod10 === 1 && mod100 !== 11) return one;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
+  return many;
+}
+
+function sourceLabel(pointer) {
+  const labels = {
+    label: "Название",
+    id: "ID",
+    type: "Тип",
+    concept_path: "Путь",
+    metaconcept_path: "Путь метапонятия",
+    depth: "Глубина",
+    meta: "Метапонятие",
+    path: "Путь ИР",
+    total: "Всего совпадений",
+    total_matches: "Всего совпадений",
+    truncated: "Выдача обрезана",
+    nodes: "Вершин",
+    edges: "Дуг",
+    start: "Начальная вершина",
+    title: "Название",
+    name: "Имя",
+    json_type: "Тип JSON",
+    ontology: "Онтология",
+    creation: "Дата создания",
+    date: "Дата изменения",
+    source: "Источник",
+  };
+  const parts = String(pointer || "").split("/").filter(Boolean);
+  const key = parts[parts.length - 1] || "";
+  return labels[key] || key.replaceAll("_", " ") || "Значение";
+}
+
+function sourceGroup(pointer) {
+  const value = String(pointer || "");
+  if (value.startsWith("/matches/")) return "Вершина";
+  if (value.startsWith("/resources/")) return "Ресурсы";
+  if (/^\/(path|total|truncated)$/.test(value)) return "Результат поиска";
+  if (/^\/(nodes|edges|start)$/.test(value)) return "Результат подсчёта";
+  return "Данные";
+}
+
+function sourceValue(value) {
+  if (value === true) return "да";
+  if (value === false) return "нет";
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "number") {
+    return Number.isInteger(value)
+      ? String(value)
+      : value.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
+  }
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+function registerCalls(calls, messageId) {
+  for (const call of calls || []) {
+    if (!call?.call_id) continue;
+    callRegistry.set(call.call_id, call);
+    if (messageId !== undefined && messageId !== null) {
+      callRegistry.set(`m${messageId}_${call.call_id}`, call);
+    }
+  }
+}
+
+function findCall(callId, calls) {
+  const local = (calls || []).find(item => item.call_id === callId);
+  if (local) return local;
+  if (callRegistry.has(callId)) return callRegistry.get(callId);
+  const rawId = String(callId || "").replace(/^m\d+_/, "");
+  return callRegistry.get(rawId) || null;
+}
+
+function sourceHead(tool, path = "", summary = false) {
+  const head = h("div", summary ? "source-head source-head-summary" : "source-head");
+  head.append(h("div", "source-tool", tool || "тулз"));
+  if (path) head.append(h("div", "source-path", path));
+  return head;
+}
+
+function aggregateLabel(claim) {
+  const text = String(claim.statement || "").replace(/\s+равно\s+.*$/i, "").trim();
+  return text || "Итог";
+}
+
 function renderClaims(claims, calls) {
-  const details = h("details", "sources");
-  details.append(h("summary", null, `Источники (${claims.length})`));
+  const byCall = new Map();
+  const aggregates = [];
+  const allCallIds = new Set();
+
   for (const claim of claims) {
-    const item = h("div", "claim");
-    item.append(h("div", "claim-statement", claim.statement));
-    const meta = [];
-    if (claim.value !== null && claim.value !== undefined) meta.push(`value: ${JSON.stringify(claim.value)}`);
-    if (claim.quote) meta.push(`quote: «${claim.quote}»`);
-    if (meta.length) item.append(h("div", "claim-meta", meta.join(" · ")));
+    const sources = claim.sources || [];
+    const sourceCalls = new Set(sources.map(source => source.call_id || "?"));
+    for (const callId of sourceCalls) allCallIds.add(callId);
+
+    if (sourceCalls.size > 1) {
+      aggregates.push(claim);
+      continue;
+    }
+    for (const source of sources) {
+      const callId = source.call_id || "?";
+      if (!byCall.has(callId)) byCall.set(callId, []);
+      byCall.get(callId).push({ claim, source });
+    }
+  }
+
+  const callCount = allCallIds.size;
+  const factCount = claims.length;
+  const details = h("details", "sources");
+  details.append(
+    h(
+      "summary",
+      null,
+      `Источники: ${callCount} ${plural(callCount, "запрос", "запроса", "запросов")}, ` +
+        `${factCount} ${plural(factCount, "факт", "факта", "фактов")}`,
+    ),
+  );
+
+  if (aggregates.length) {
+    const aggregateCalls = new Set(
+      aggregates.flatMap(claim => (claim.sources || []).map(source => source.call_id || "?")),
+    );
+    const card = h("div", "source-card");
+    card.append(
+      sourceHead(
+        "Итоги",
+        `${aggregateCalls.size} ${plural(aggregateCalls.size, "запрос", "запроса", "запросов")}`,
+        true,
+      ),
+    );
+    const group = h("div", "source-group");
+    group.append(h("div", "source-group-title", "Сводные значения"));
+    for (const claim of aggregates) {
+      const fact = h("div", "source-fact");
+      fact.append(h("span", "fact-label", aggregateLabel(claim)));
+      fact.append(h("span", "fact-value", sourceValue(claim.value)));
+      group.append(fact);
+    }
+    card.append(group);
+    details.append(card);
+  }
+
+  for (const [callId, entries] of byCall) {
+    const call = findCall(callId, calls);
+    const path = call?.args?.path || call?.result?.path || "";
+    const card = h("div", "source-card");
+    card.append(sourceHead(call ? call.tool : "тулз", path));
+
+    const groups = new Map();
+    for (const entry of entries) {
+      const group = sourceGroup(entry.source.pointer);
+      if (!groups.has(group)) groups.set(group, []);
+      groups.get(group).push(entry);
+    }
+
+    for (const [name, items] of groups) {
+      const group = h("div", "source-group");
+      group.append(h("div", "source-group-title", name));
+      for (const { claim, source } of items) {
+        const fact = h("div", "source-fact");
+        fact.append(h("span", "fact-label", sourceLabel(source.pointer)));
+        fact.append(h("span", "fact-value", sourceValue(claim.value)));
+        group.append(fact);
+      }
+      card.append(group);
+    }
+    details.append(card);
+  }
+
+  const technical = h("details", "technical");
+  technical.append(h("summary", null, "Технические детали"));
+  for (const claim of claims) {
     for (const source of claim.sources || []) {
-      const call = (calls || []).find(item => item.call_id === source.call_id);
+      const call = findCall(source.call_id, calls);
       const tool = call ? call.tool : "?";
       const pointer = source.pointer || "''";
-      const expr = source.expr ? ` · expr: ${source.expr}` : "";
-      item.append(h("div", "source", `${source.call_id} · ${tool} · ${pointer}${expr}`));
+      technical.append(h("div", "technical-line", `${source.call_id} · ${tool} · ${pointer}`));
     }
-    details.append(item);
   }
+  details.append(technical);
   return details;
 }
 
@@ -190,9 +356,15 @@ async function openDialogue(dialogueId) {
     currentDialogueId = dialogueId;
     localStorage.setItem("iacpaas_dialogue", dialogueId);
 
-    if (data.messages.length) {
+    const storedMessages = data.messages || [];
+    callRegistry.clear();
+    for (const message of storedMessages) {
+      registerCalls(message.calls, message.message_id);
+    }
+
+    if (storedMessages.length) {
       const fragment = document.createDocumentFragment();
-      for (const message of data.messages) fragment.append(renderStoredMessage(message));
+      for (const message of storedMessages) fragment.append(renderStoredMessage(message));
       messages.replaceChildren(fragment);
       empty.style.display = "none";
     } else {
@@ -213,6 +385,7 @@ async function openDialogue(dialogueId) {
 
 function openNewChat() {
   currentDialogueId = null;
+  callRegistry.clear();
   localStorage.removeItem("iacpaas_dialogue");
   messages.replaceChildren(empty);
   empty.style.display = "";
@@ -251,6 +424,7 @@ async function ask(question) {
     } else {
       currentDialogueId = data.dialogue_id;
       localStorage.setItem("iacpaas_dialogue", currentDialogueId);
+      registerCalls(data.calls);
       messages.append(renderAnswer(data));
       loadDialogues();
       scrollDown();

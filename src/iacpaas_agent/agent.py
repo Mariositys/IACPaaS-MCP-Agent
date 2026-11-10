@@ -26,6 +26,7 @@ load_dotenv()
 MODEL_NAME = os.getenv("IACPAAS_AGENT_MODEL")
 BASE_URL = os.getenv("IACPAAS_AGENT_BASE_URL")
 API_KEY = os.getenv("IACPAAS_AGENT_API_KEY")
+REASONING_EFFORT = (os.getenv("IACPAAS_AGENT_REASONING_EFFORT", "low") or "").strip().lower() or None
 
 MAX_STEPS = 8
 MAX_ATTEMPTS = 3
@@ -68,7 +69,13 @@ def make_model() -> ChatOpenAI:
     ]
     if missing:
         raise RuntimeError("Задайте " + ", ".join(missing))
-    return ChatOpenAI(model=MODEL_NAME, base_url=BASE_URL, api_key=API_KEY, temperature=0)
+    return ChatOpenAI(
+        model=MODEL_NAME,
+        base_url=BASE_URL,
+        api_key=API_KEY,
+        temperature=0,
+        reasoning_effort=REASONING_EFFORT,
+    )
 
 
 def unwrap(result: Any) -> Any:

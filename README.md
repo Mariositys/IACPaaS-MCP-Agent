@@ -66,11 +66,13 @@ npx -y @modelcontextprotocol/inspector uv run iacpaas-mcp
 
 ## Агент
 
-Нужны три переменные:
+Нужны три обязательные переменные:
 
 - `IACPAAS_AGENT_API_KEY`;
 - `IACPAAS_AGENT_MODEL`;
 - `IACPAAS_AGENT_BASE_URL`.
+
+Уровень рассуждений задается `IACPAAS_AGENT_REASONING_EFFORT` (по умолчанию `low`).
 
 Пример для Polza:
 
@@ -78,6 +80,7 @@ npx -y @modelcontextprotocol/inspector uv run iacpaas-mcp
 IACPAAS_AGENT_API_KEY=...
 IACPAAS_AGENT_MODEL=...
 IACPAAS_AGENT_BASE_URL=https://polza.ai/api/v1
+IACPAAS_AGENT_REASONING_EFFORT=low
 ```
 
 ```powershell

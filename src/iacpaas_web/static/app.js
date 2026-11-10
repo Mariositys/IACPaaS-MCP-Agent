@@ -87,12 +87,14 @@ function callErrorKind(data) {
 
 function badge(data) {
   if (data.answer && data.answer.requires_confirmation) return ["Нужно подтверждение", "badge-yellow"];
+  if (data.verdict && data.verdict.ok && !(data.answer && data.answer.refused)) {
+    return ["Проверено", "badge-green"];
+  }
   const errorKind = callErrorKind(data);
   if (errorKind === "platform") return ["Ошибка платформы", "badge-red"];
   if (errorKind === "auth") return ["Ошибка доступа", "badge-red"];
   if (errorKind === "timeout") return ["Таймаут", "badge-red"];
   if (data.answer && data.answer.refused) return ["Нужны данные", "badge-yellow"];
-  if (data.verdict && data.verdict.ok) return ["Проверено", "badge-green"];
   return ["Не подтверждено", "badge-red"];
 }
 
@@ -114,14 +116,14 @@ function addLoading() {
   const row = h("div", "row agent");
   const bubble = h("div", "bubble");
   const line = h("div", "answer-text");
-  line.append(h("span", "spinner"));
-  line.append(document.createTextNode("Собираю данные и проверяю ответ…"));
+  const status = h("span", "loading-status", "Собираю данные и проверяю ответ…");
+  line.append(h("span", "spinner"), status);
   bubble.append(line);
   row.append(bubble);
   messages.append(row);
   hideEmpty();
   scrollDown();
-  return row;
+  return { row, status };
 }
 
 function addError(text, kind) {
@@ -444,33 +446,72 @@ async function ask(question) {
   const loading = addLoading();
 
   try {
-    const response = await fetch("/api/chat", {
+    const response = await fetch("/api/chat/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question, dialogue_id: currentDialogueId }),
     });
-    const raw = await response.text();
-    let data;
-    try {
-      data = raw ? JSON.parse(raw) : {};
-    } catch {
-      loading.remove();
+    if (!response.ok || !response.body) {
+      const raw = await response.text();
+      loading.row.remove();
       addError(`HTTP ${response.status}: ${raw.slice(0, 500) || "пустой ответ"}`, "platform");
       return;
     }
-    loading.remove();
-    if (!response.ok || data.error) {
-      addError(data.error || `HTTP ${response.status}`, data.kind);
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let finalData = null;
+    let streamError = null;
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let match = buffer.match(/\r?\n\r?\n/);
+      while (match) {
+        const chunk = buffer.slice(0, match.index);
+        buffer = buffer.slice(match.index + match[0].length);
+        const payload = chunk
+          .split(/\r?\n/)
+          .filter((line) => line.startsWith("data:"))
+          .map((line) => line.slice(5).trimStart())
+          .join("\n");
+        if (payload) {
+          let event;
+          try {
+            event = JSON.parse(payload);
+          } catch {
+            event = null;
+          }
+          if (event && event.type === "status") {
+            loading.status.textContent = event.message;
+          } else if (event && event.type === "final") {
+            finalData = event.result;
+          } else if (event && event.type === "error") {
+            streamError = event;
+          }
+        }
+        match = buffer.match(/\r?\n\r?\n/);
+      }
+    }
+
+    loading.row.remove();
+    if (streamError) {
+      addError(streamError.error || "Ошибка сервера", streamError.kind);
+    } else if (!finalData) {
+      addError("Сервер не вернул итоговый ответ", "platform");
     } else {
-      currentDialogueId = data.dialogue_id;
+      currentDialogueId = finalData.dialogue_id;
       localStorage.setItem("iacpaas_dialogue", currentDialogueId);
-      registerCalls(data.calls);
-      messages.append(renderAnswer(data));
+      registerCalls(finalData.calls);
+      messages.append(renderAnswer(finalData));
       loadDialogues();
       scrollDown();
     }
   } catch (error) {
-    loading.remove();
+    loading.row.remove();
     addError(`Сеть: ${error.message}`, "platform");
   } finally {
     sending = false;

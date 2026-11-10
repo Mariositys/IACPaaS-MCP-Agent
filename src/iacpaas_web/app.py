@@ -1,12 +1,14 @@
 """Браузерный чат над агентом IACPaaS."""
 
+import asyncio
+import json
 import logging
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
@@ -84,6 +86,73 @@ async def dialogue(dialogue_id: str) -> Any:
     if current is None:
         return JSONResponse(status_code=404, content={"error": "Чат не найден", "kind": "not_found"})
     return {"dialogue": current, "messages": store.get_messages(dialogue_id)}
+
+
+def _chat_error(exc: Exception) -> dict[str, Any]:
+    message = str(exc)
+    lower = message.casefold()
+    if "credentials" in lower or "api_key" in lower or "iacpaas_agent" in lower:
+        return {
+            "error": (
+                "Не заданы параметры модели: IACPAAS_AGENT_API_KEY, "
+                "IACPAAS_AGENT_MODEL, IACPAAS_AGENT_BASE_URL."
+            ),
+            "kind": "auth",
+        }
+    return {"error": message, "kind": "platform"}
+
+
+def _sse(payload: dict[str, Any]) -> str:
+    return f"data: {json.dumps(payload, ensure_ascii=False, default=str)}\n\n"
+
+
+@app.post("/api/chat/stream")
+async def chat_stream(request: ChatRequest, http_request: Request) -> StreamingResponse:
+    dialogue_id = request.dialogue_id
+    history = store.get_messages(dialogue_id) if dialogue_id and store.get_dialogue(dialogue_id) else []
+    runtime = getattr(http_request.app.state, "agent_runtime", None)
+
+    async def generate():
+        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+
+        async def emit(event: dict[str, Any]) -> None:
+            await queue.put(event)
+
+        async def work() -> None:
+            try:
+                result = await run_agent(
+                    request.question,
+                    read_only=False,
+                    history=history,
+                    runtime=runtime,
+                    on_event=emit,
+                )
+                result["dialogue_id"] = store.save_message(dialogue_id, request.question, result)
+                await queue.put({"type": "final", "result": result})
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - ошибка передается клиенту событием
+                logger.exception("Ошибка /api/chat/stream")
+                await queue.put({"type": "error", **_chat_error(exc)})
+
+        task = asyncio.create_task(work())
+        try:
+            while True:
+                event = await queue.get()
+                yield _sse(event)
+                if event.get("type") in {"final", "error"}:
+                    break
+        finally:
+            if not task.done():
+                task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.post("/api/chat")

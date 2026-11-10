@@ -4,7 +4,9 @@ import asyncio
 import json
 import os
 import sys
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
+from pathlib import Path
 from typing import Annotated, Any, TypedDict
 
 from dotenv import load_dotenv
@@ -32,6 +34,17 @@ MAX_STEPS = 8
 MAX_ATTEMPTS = 3
 AGENT_INTERNAL_TOOLS = {"validate_answer"}
 WRITE_TOOLS = {"import_inforesource", "update_vertex", "delete_inforesource"}
+EventCallback = Callable[[dict[str, Any]], Awaitable[None]]
+TOOL_STATUS = {
+    "list_inforesources": "Ищу ресурсы в каталоге…",
+    "get_inforesource": "Читаю инфоресурс…",
+    "get_subgraph": "Строю подграф…",
+    "count_graph": "Считаю вершины и дуги…",
+    "query_graph": "Ищу вершины…",
+    "import_inforesource": "Выполняю импорт…",
+    "update_vertex": "Выполняю изменение…",
+    "delete_inforesource": "Выполняю удаление…",
+}
 
 CONTEXT_LIMIT_TOKENS = 128_000
 OUTPUT_RESERVE_TOKENS = 8_000
@@ -313,12 +326,21 @@ def context_limit_result(question: str) -> dict[str, Any]:
     }
 
 
-def build_graph(model: ChatOpenAI, tools: list[StructuredTool]):
+async def emit_event(on_event: EventCallback | None, message: str, **extra: Any) -> None:
+    if on_event is not None:
+        await on_event({"type": "status", "message": message, **extra})
+
+
+def build_graph(model: ChatOpenAI, tools: list[StructuredTool], on_event: EventCallback | None = None):
     model_with_tools = model.bind_tools(tools)
     structured_model = model.with_structured_output(AgentAnswer)
     tool_map = {tool.name: tool for tool in tools}
 
     async def agent_node(state: AgentState) -> dict[str, Any]:
+        await emit_event(
+            on_event,
+            "Анализирую запрос…" if state["steps"] == 0 else "Продолжаю сбор данных…",
+        )
         response = await model_with_tools.ainvoke(state["messages"])
         return {"messages": [response], "steps": state["steps"] + 1}
 
@@ -330,6 +352,11 @@ def build_graph(model: ChatOpenAI, tools: list[StructuredTool]):
         for call in getattr(last, "tool_calls", None) or []:
             call_id = call.get("id") or f"call_{len(evidence) + 1}"
             tool = tool_map.get(call["name"])
+            await emit_event(
+                on_event,
+                TOOL_STATUS.get(call["name"], f"Выполняю {call['name']}…"),
+                tool=call["name"],
+            )
             if tool is None:
                 result: Any = {"error": f"Неизвестный тулз: {call['name']}", "kind": "validation"}
             else:
@@ -345,6 +372,7 @@ def build_graph(model: ChatOpenAI, tools: list[StructuredTool]):
         return {"messages": messages, "evidence": evidence, "calls": calls}
 
     async def answer_node(state: AgentState) -> dict[str, Any]:
+        await emit_event(on_event, "Формирую ответ…")
         reasons = ""
         if state["reasons"]:
             reasons = "Предыдущая проверка не прошла:\n" + "\n".join(f"- {r}" for r in state["reasons"])
@@ -375,7 +403,8 @@ def build_graph(model: ChatOpenAI, tools: list[StructuredTool]):
             return {"answer": None, "reasons": [reason], "attempts": state["attempts"] + 1}
         return {"answer": answer, "reasons": [], "attempts": state["attempts"] + 1}
 
-    def validate_node(state: AgentState) -> dict[str, Any]:
+    async def validate_node(state: AgentState) -> dict[str, Any]:
+        await emit_event(on_event, "Проверяю ответ…")
         if state["answer"] is None:
             verdict = Verdict(ok=False, reasons=state["reasons"] or ["ответ модели не удалось разобрать"])
             return {"verdict": verdict, "reasons": verdict.reasons, "final": ""}
@@ -442,6 +471,7 @@ async def run_agent(
     read_only: bool = False,
     history: list[dict[str, Any]] | None = None,
     runtime: AgentRuntime | None = None,
+    on_event: EventCallback | None = None,
 ) -> dict[str, Any]:
     history_evidence, history_text, fits = prepare_history(history)
     if not fits:
@@ -449,14 +479,14 @@ async def run_agent(
 
     if runtime is not None:
         tools = await runtime.tools(read_only)
-        graph = build_graph(make_model(), tools)
+        graph = build_graph(make_model(), tools, on_event)
         state = initial_state(question, history_text, history_evidence)
         result = await graph.ainvoke(state)
     else:
         transport = StdioTransport(command=sys.executable, args=["-m", "iacpaas_mcp"])
         async with Client(transport) as mcp_client:
             tools = await load_tools(mcp_client, read_only=read_only)
-            graph = build_graph(make_model(), tools)
+            graph = build_graph(make_model(), tools, on_event)
             state = initial_state(question, history_text, history_evidence)
             result = await graph.ainvoke(state)
     return {

@@ -196,22 +196,37 @@ function sourceValue(value) {
   return String(value);
 }
 
+function callIds(call) {
+  return [call?.call_id, call?.result?.call_id]
+    .filter((value) => value !== undefined && value !== null)
+    .map(String);
+}
+
 function registerCalls(calls, messageId) {
   for (const call of calls || []) {
-    if (!call?.call_id) continue;
-    callRegistry.set(call.call_id, call);
-    if (messageId !== undefined && messageId !== null) {
-      callRegistry.set(`m${messageId}_${call.call_id}`, call);
+    for (const id of callIds(call)) {
+      callRegistry.set(id, call);
+      if (messageId !== undefined && messageId !== null) {
+        callRegistry.set(`m${messageId}_${id}`, call);
+      }
     }
   }
 }
 
 function findCall(callId, calls) {
-  const local = (calls || []).find(item => item.call_id === callId);
+  const wanted = String(callId || "");
+  const local = (calls || []).find((item) => callIds(item).includes(wanted));
   if (local) return local;
-  if (callRegistry.has(callId)) return callRegistry.get(callId);
-  const rawId = String(callId || "").replace(/^m\d+_/, "");
+  if (callRegistry.has(wanted)) return callRegistry.get(wanted);
+  const rawId = wanted.replace(/^m\d+_/, "");
   return callRegistry.get(rawId) || null;
+}
+
+function factLabel(claim, source) {
+  const label = sourceLabel(source.pointer);
+  if (label !== "Название" && label !== "name") return label;
+  const statement = String(claim.statement || "").trim();
+  return statement.length > 90 ? `${statement.slice(0, 87)}…` : statement || label;
 }
 
 function sourceHead(tool, path = "", summary = false) {
@@ -301,7 +316,7 @@ function renderClaims(claims, calls) {
       group.append(h("div", "source-group-title", name));
       for (const { claim, source } of items) {
         const fact = h("div", "source-fact");
-        fact.append(h("span", "fact-label", sourceLabel(source.pointer)));
+        fact.append(h("span", "fact-label", factLabel(claim, source)));
         fact.append(h("span", "fact-value", sourceValue(claim.value)));
         group.append(fact);
       }

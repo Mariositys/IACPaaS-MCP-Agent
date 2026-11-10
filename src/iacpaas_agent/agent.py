@@ -262,7 +262,11 @@ def message_block(message: dict[str, Any], index: int) -> tuple[str, dict[str, A
         if not old_id:
             continue
         new_id = f"m{message_id}_{old_id}"
-        evidence[new_id] = call.get("result")
+        result = call.get("result")
+        evidence[new_id] = result
+        result_call_id = result.get("call_id") if isinstance(result, dict) else getattr(result, "call_id", None)
+        if result_call_id:
+            evidence[f"m{message_id}_{result_call_id}"] = result
         call_ids.append(new_id)
         call_arguments.append(
             {
@@ -365,6 +369,11 @@ def build_graph(model: ChatOpenAI, tools: list[StructuredTool], on_event: EventC
                 except Exception as e:  # noqa: BLE001 - ошибка тулза возвращается модели как результат
                     result = {"error": f"Ошибка вызова: {e}", "kind": "platform"}
             evidence[call_id] = result
+            # MCP-сервер возвращает свой request_id в result.call_id; модель может
+            # процитировать именно его вместо LangChain call_id.
+            result_call_id = result.get("call_id") if isinstance(result, dict) else getattr(result, "call_id", None)
+            if result_call_id:
+                evidence[str(result_call_id)] = result
             calls.append({"call_id": call_id, "tool": call["name"], "args": call.get("args", {}), "result": result})
             messages.append(
                 ToolMessage(content=json.dumps(result, ensure_ascii=False, default=str), tool_call_id=call_id)

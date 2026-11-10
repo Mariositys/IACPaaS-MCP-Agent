@@ -161,7 +161,22 @@ async def export_from(
     return ErrorResult(error=f"Вершина '{start}' не найдена в ИР '{path}'", kind="not_found")
 
 
-def to_node(vertex: dict[str, Any], concept_path: str, metaconcept_path: str, depth: int) -> GraphNode:
+def to_node(
+    vertex: dict[str, Any],
+    concept_path: str,
+    metaconcept_path: str,
+    depth: int,
+    view: Literal["summary", "full"] = "full",
+) -> GraphNode:
+    if view == "summary":
+        return GraphNode(
+            label=vertex.get("name", vertex.get("value", "")),
+            type=vertex["type"],
+            meta=vertex.get("meta"),
+            concept_path=concept_path,
+            metaconcept_path=metaconcept_path,
+            depth=depth,
+        )
     return GraphNode(
         id=vertex.get("id"),
         label=vertex.get("name", vertex.get("value", "")),
@@ -218,8 +233,9 @@ async def get_subgraph(
     start: ConceptPath = "",
     depth: Depth = 2,
     limit: Limit = 200,
+    view: Literal["summary", "full"] = "summary",
 ) -> Subgraph | ErrorResult:
-    """Получить подграф ИР (вершины и дуги) от вершины start на глубину depth."""
+    """Получить подграф ИР. view=summary - без комментариев и служебных полей, full - все данные."""
     result = await export_from(ctx, path, start, depth)
     if isinstance(result, ErrorResult):
         return result
@@ -230,14 +246,28 @@ async def get_subgraph(
         if len(nodes) == limit:
             truncated = True
             break
-        nodes.append(to_node(vertex, cp, mp, d))
+        nodes.append(to_node(vertex, cp, mp, d, view))
         for child in vertex.get("successors", []):
-            edges.append(GraphEdge(source=cp, target=_join(cp, _segment(child)), rcomment=child.get("rcomment")))
+            edges.append(
+                GraphEdge(
+                    source=cp,
+                    target=_join(cp, _segment(child)),
+                    rcomment=child.get("rcomment") if view == "full" else None,
+                )
+            )
     included = {n.concept_path for n in nodes}
     edges = [e for e in edges if e.target in included]
     return record_evidence(
         ctx,
-        Subgraph(path=path, start=_norm(start), depth=depth, nodes=nodes, edges=edges, truncated=truncated),
+        Subgraph(
+            path=path,
+            start=_norm(start),
+            depth=depth,
+            view=view,
+            nodes=nodes,
+            edges=edges,
+            truncated=truncated,
+        ),
     )
 
 

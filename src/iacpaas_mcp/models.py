@@ -6,7 +6,7 @@
 
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 
 from .config import MAX_DEPTH, MAX_LIMIT
 
@@ -130,6 +130,10 @@ class GraphNode(BaseModel):
     link: str | None = Field(None, description="Куда ведет ссылка, если вершина - ссылка")
     original: str | None = Field(None, description="Оригинал, если вершина - зависимый клон")
 
+    @model_serializer(mode="plain")
+    def serialize_node(self) -> dict[str, Any]:
+        return {name: getattr(self, name) for name in self.model_fields if getattr(self, name) is not None}
+
 
 class GraphEdge(BaseModel):
     source: str = Field(description="concept_path родительской вершины")
@@ -141,6 +145,7 @@ class Subgraph(BaseModel):
     path: str
     start: str = Field(description="concept_path начальной вершины ('' - корень ИР)")
     depth: int | None
+    view: Literal["summary", "full"] = Field("summary", description="Режим вывода")
     nodes: list[GraphNode]
     edges: list[GraphEdge]
     truncated: bool = Field(False, description="True, если подграф обрезан по limit")

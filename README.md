@@ -151,6 +151,9 @@ Write-операции доступны только при `IACPAAS_ALLOW_WRITE
 - «Найди вершину «<вершина>» в ИР «<ресурс>»» - `query_graph`.
 - «Покажи подграф ИР «<ресурс>» от вершины «<вершина>» глубиной 2» - `get_subgraph`.
 
+`get_subgraph` по умолчанию использует `view="summary"` (без комментариев и лишних полей);
+для полного описания вершины передайте `view="full"`.
+
 Диагностика: `uv run iacpaas-mcp --version` проверяет запуск сервера, MCP Inspector
 показывает 9 тулзов и их схемы, включая `list_inforesources` и `validate_answer`.
 Ошибки чтения приходят как `ErrorResult` с полем `kind` (`auth`, `not_found`,

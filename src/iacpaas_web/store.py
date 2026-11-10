@@ -8,7 +8,7 @@ from contextlib import closing
 from pathlib import Path
 from typing import Any
 
-DB_PATH = Path("data/chat.db")
+DB_PATH = Path(__file__).resolve().parents[2] / "data" / "chat.db"
 TITLE_LIMIT = 60
 
 

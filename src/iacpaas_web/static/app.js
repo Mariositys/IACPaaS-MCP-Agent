@@ -77,8 +77,20 @@ function formatDate(timestamp) {
   });
 }
 
+function callErrorKind(data) {
+  for (const call of data.calls || []) {
+    const result = call && call.result;
+    if (result && result.error && result.kind) return result.kind;
+  }
+  return null;
+}
+
 function badge(data) {
   if (data.answer && data.answer.requires_confirmation) return ["Нужно подтверждение", "badge-yellow"];
+  const errorKind = callErrorKind(data);
+  if (errorKind === "platform") return ["Ошибка платформы", "badge-red"];
+  if (errorKind === "auth") return ["Ошибка доступа", "badge-red"];
+  if (errorKind === "timeout") return ["Таймаут", "badge-red"];
   if (data.answer && data.answer.refused) return ["Нужны данные", "badge-yellow"];
   if (data.verdict && data.verdict.ok) return ["Проверено", "badge-green"];
   return ["Не подтверждено", "badge-red"];

@@ -2,10 +2,10 @@
 
 MCP tool               -> операция IACPaaS
 list_inforesources     -> локальный catalog.txt
-get_inforesource       -> GET    /api/data/export/user-item
-get_subgraph           -> GET    /api/data/export/user-item (start-target-concept-path, export-depth)
-count_graph            -> GET    /api/data/export/user-item + подсчет по дереву
-query_graph            -> GET    /api/data/export/user-item + поиск по дереву
+get_inforesource       -> GET /api/data/export/user-item (полный экспорт в локальный кэш)
+get_subgraph           -> локальный кэш + страницы offset/next_offset
+count_graph            -> локальный кэш + подсчет по дереву
+query_graph            -> локальный кэш + поиск по дереву
 validate_answer        -> локальная проверка AgentAnswer по evidence сессии
 import_inforesource    -> POST   /api/data/import
 update_vertex          -> PUT    /api/data/update
@@ -24,9 +24,10 @@ from pydantic import Field, ValidationError
 from iacpaas_agent.schemas import AgentAnswer
 from iacpaas_agent.validator import Verdict, validate
 
-from .catalog import find_entry, list_entries, remove_entry, upsert_path
+from .catalog import list_entries, remove_entry, upsert_path
 from .client import IacpaasClient
 from .config import ALLOW_WRITE
+from .graph_cache import cache
 from .models import (
     CatalogListing,
     ConceptPath,
@@ -40,10 +41,13 @@ from .models import (
     IrPath,
     Limit,
     MetaconceptPath,
+    Offset,
     OperationPreview,
     OperationResult,
     QueryResult,
     Subgraph,
+    VertexLookup,
+    VertexMatch,
 )
 
 
@@ -129,36 +133,25 @@ def walk(
         )
 
 
-async def export_checked(ctx: Context, path: str, **kwargs: Any) -> dict[str, Any] | ErrorResult:
-    try:
-        entry = find_entry(path)
-    except Exception as e:  # noqa: BLE001 - ошибка файла возвращается клиенту
-        return ErrorResult(error=f"catalog.txt: {e}", kind="platform")
-    if entry is None:
-        return ErrorResult(
-            error=f"Ресурс '{path}' отсутствует в catalog.txt. Сначала вызовите list_inforesources.",
-            kind="not_found",
+def walk_limited(
+    vertex: dict[str, Any],
+    concept_path: str = "",
+    metaconcept_path: str = "",
+    depth: int = 0,
+    limit_depth: int | None = None,
+) -> Iterator[tuple[dict[str, Any], str, str, int]]:
+    """Обход в глубину с ограничением глубины от переданной вершины."""
+    yield vertex, concept_path, metaconcept_path, depth
+    if limit_depth is not None and depth >= limit_depth:
+        return
+    for child in vertex.get("successors", []):
+        yield from walk_limited(
+            child,
+            _join(concept_path, _segment(child)),
+            _join(metaconcept_path, child.get("meta", "")),
+            depth + 1,
+            limit_depth,
         )
-    doc = await client(ctx).export(path, **kwargs)
-    if isinstance(doc, ErrorResult):
-        return doc
-    if not isinstance(doc, dict):
-        return ErrorResult(error="Ответ IACPaaS не является объектом", kind="platform")
-    return doc
-
-
-async def export_from(
-    ctx: Context, path: str, start: str, depth: int | None
-) -> Iterator[tuple[dict[str, Any], str, str, int]] | ErrorResult:
-    """Экспортировать ИР от вершины start и вернуть обход ее поддерева."""
-    doc = await export_checked(ctx, path, start_concept_path=start or None, depth=depth)
-    if isinstance(doc, ErrorResult):
-        return doc
-    target = _norm(start)
-    for vertex, cp, mp, _ in walk(doc):
-        if cp == target:
-            return walk(vertex, cp, mp)
-    return ErrorResult(error=f"Вершина '{start}' не найдена в ИР '{path}'", kind="not_found")
 
 
 def to_node(
@@ -213,16 +206,18 @@ async def get_inforesource(
     path: IrPath,
     format: Literal["metadata", "json"] = "metadata",
     json_type: Literal["universal"] = "universal",
+    refresh: bool = False,
 ) -> InfoResourceDocument | ErrorResult:
-    """Получить ИР: metadata - сведения и корень без потомков, json - весь ИР."""
-    depth = 0 if format == "metadata" else None
-    doc = await export_checked(ctx, path, json_type=json_type, depth=depth)
+    """Получить ИР из локального кэша: metadata - корень без потомков, json - весь ИР."""
+    doc = await cache.load(client(ctx), path, refresh=refresh)
     if isinstance(doc, ErrorResult):
         return doc
     try:
         document = InfoResourceDocument.model_validate(doc)
     except ValidationError as e:
         return ErrorResult(error=f"Ответ IACPaaS не похож на ИР: {e}", kind="validation")
+    if format == "metadata":
+        document = document.model_copy(update={"successors": []})
     return record_evidence(ctx, document)
 
 
@@ -232,60 +227,90 @@ async def get_subgraph(
     path: IrPath,
     start: ConceptPath = "",
     depth: Depth = 2,
-    limit: Limit = 200,
+    limit: Limit = 100,
+    offset: Offset = 0,
     view: Literal["summary", "full"] = "summary",
+    refresh: bool = False,
 ) -> Subgraph | ErrorResult:
-    """Получить подграф ИР. view=summary - без комментариев и служебных полей, full - все данные."""
-    result = await export_from(ctx, path, start, depth)
-    if isinstance(result, ErrorResult):
-        return result
-    nodes: list[GraphNode] = []
-    edges: list[GraphEdge] = []
-    truncated = False
-    for vertex, cp, mp, d in result:
-        if len(nodes) == limit:
-            truncated = True
+    """Постранично получить подграф ИР из локального кэша."""
+    doc = await cache.load(client(ctx), path, refresh=refresh)
+    if isinstance(doc, ErrorResult):
+        return doc
+
+    target = _norm(start)
+    root: tuple[dict[str, Any], str, str, int] | None = None
+    for vertex, cp, mp, d in walk(doc):
+        if cp == target:
+            root = (vertex, cp, mp, d)
             break
-        nodes.append(to_node(vertex, cp, mp, d, view))
+    if root is None:
+        return ErrorResult(error=f"Вершина '{start}' не найдена в ИР '{path}'", kind="not_found")
+
+    entries = list(walk_limited(root[0], root[1], root[2], 0, depth))
+    total = len(entries)
+    page = entries[offset : offset + limit]
+    nodes = [to_node(vertex, cp, mp, d, view) for vertex, cp, mp, d in page]
+    included = {node.concept_path for node in nodes}
+
+    edges: list[GraphEdge] = []
+    for vertex, cp, _, _ in page:
         for child in vertex.get("successors", []):
-            edges.append(
-                GraphEdge(
-                    source=cp,
-                    target=_join(cp, _segment(child)),
-                    rcomment=child.get("rcomment") if view == "full" else None,
+            target_path = _join(cp, _segment(child))
+            if target_path in included:
+                edges.append(
+                    GraphEdge(
+                        source=cp,
+                        target=target_path,
+                        rcomment=child.get("rcomment") if view == "full" else None,
+                    )
                 )
-            )
-    included = {n.concept_path for n in nodes}
-    edges = [e for e in edges if e.target in included]
+
+    has_more = offset + len(page) < total
     return record_evidence(
         ctx,
         Subgraph(
             path=path,
-            start=_norm(start),
+            start=target,
             depth=depth,
             view=view,
             nodes=nodes,
             edges=edges,
-            truncated=truncated,
+            offset=offset,
+            total=total,
+            has_more=has_more,
+            next_offset=offset + limit if has_more else None,
+            truncated=has_more,
         ),
     )
 
 
 @mcp.tool(annotations=READ, tags={"read"})
-async def count_graph(ctx: Context, path: IrPath, start: ConceptPath = "") -> GraphCounts | ErrorResult:
+async def count_graph(
+    ctx: Context,
+    path: IrPath,
+    start: ConceptPath = "",
+    refresh: bool = False,
+) -> GraphCounts | ErrorResult:
     """Подсчитать вершины и дуги ИР целиком или поддерева от вершины start."""
-    result = await export_from(ctx, path, start, None)
-    if isinstance(result, ErrorResult):
-        return result
+    doc = await cache.load(client(ctx), path, refresh=refresh)
+    if isinstance(doc, ErrorResult):
+        return doc
+    target = _norm(start)
+    root: tuple[dict[str, Any], str, str, int] | None = None
+    for vertex, cp, mp, d in walk(doc):
+        if cp == target:
+            root = (vertex, cp, mp, d)
+            break
+    if root is None:
+        return ErrorResult(error=f"Вершина '{start}' не найдена в ИР '{path}'", kind="not_found")
     ids: set[Any] = set()
     entries = 0
-    for vertex, *_ in result:
+    for vertex, *_ in walk(root[0], root[1], root[2], 0):
         entries += 1
-        # Повторно использованная вершина (link) встречается в дереве снова, но вершиной считается один раз
         ids.add(vertex.get("id", id(vertex)))
     return record_evidence(
         ctx,
-        GraphCounts(path=path, start=_norm(start), nodes=len(ids), edges=entries - 1),
+        GraphCounts(path=path, start=target, nodes=len(ids), edges=entries - 1),
     )
 
 
@@ -298,22 +323,102 @@ async def query_graph(
     exact: bool = False,
     start: ConceptPath = "",
     limit: Limit = 50,
+    offset: Offset = 0,
+    refresh: bool = False,
 ) -> QueryResult | ErrorResult:
     """Найти вершины по имени/значению (find_by_label) или по метке метавершины (find_by_meta)."""
-    result = await export_from(ctx, path, start, None)
-    if isinstance(result, ErrorResult):
-        return result
+    doc = await cache.load(client(ctx), path, refresh=refresh)
+    if isinstance(doc, ErrorResult):
+        return doc
+    target = _norm(start)
+    root: tuple[dict[str, Any], str, str, int] | None = None
+    for vertex, cp, mp, d in walk(doc):
+        if cp == target:
+            root = (vertex, cp, mp, d)
+            break
+    if root is None:
+        return ErrorResult(error=f"Вершина '{start}' не найдена в ИР '{path}'", kind="not_found")
     needle = text.casefold()
     matches: list[GraphNode] = []
-    for vertex, cp, mp, d in result:
+    for vertex, cp, mp, d in walk(root[0], root[1], root[2], 0):
         field = vertex.get("meta", "") if query == "find_by_meta" else vertex.get("name", vertex.get("value", ""))
         hay = str(field).casefold()
         if (hay == needle) if exact else (needle in hay):
             matches.append(to_node(vertex, cp, mp, d))
+    page = matches[offset : offset + limit]
+    has_more = offset + len(page) < len(matches)
     return record_evidence(
         ctx,
         QueryResult(
-            path=path, query=query, matches=matches[:limit], total=len(matches), truncated=len(matches) > limit
+            path=path,
+            query=query,
+            matches=page,
+            total=len(matches),
+            offset=offset,
+            has_more=has_more,
+            next_offset=offset + limit if has_more else None,
+            truncated=has_more,
+        ),
+    )
+
+
+@mcp.tool(annotations=READ, tags={"read"})
+async def find_vertex(
+    ctx: Context,
+    path: IrPath,
+    text: Annotated[str, Field(min_length=1, max_length=200, description="Подстрока названия, значения, меты или комментария")],
+    limit: Annotated[int, Field(ge=1, le=50, description="Максимум совпадений")] = 10,
+) -> VertexLookup | ErrorResult:
+    """Найти вершину и сразу вернуть путь, свойства и ближайших детей. Для точечного вопроса предпочтительнее query_graph + get_subgraph."""
+    if not text.strip():
+        return ErrorResult(error="Пустой поисковый запрос", kind="validation")
+    doc = await cache.load(client(ctx), path)
+    if isinstance(doc, ErrorResult):
+        return doc
+
+    needle = text.strip().casefold()
+    candidates: list[tuple[int, int, dict[str, Any], str, str, int, str]] = []
+    for vertex, cp, mp, d in walk(doc):
+        raw_label = vertex.get("name", vertex.get("value", ""))
+        label = "" if raw_label is None else str(raw_label)
+        raw_meta = vertex.get("meta")
+        raw_comment = vertex.get("comment")
+        fields = (
+            ("label", label),
+            ("meta", "" if raw_meta is None else str(raw_meta)),
+            ("comment", "" if raw_comment is None else str(raw_comment)),
+        )
+        for field, value in fields:
+            if value and needle in value.casefold():
+                priority = 0 if label.casefold() == needle else 1 if label.casefold().startswith(needle) else 2
+                candidates.append((priority, d, vertex, cp, mp, d, field))
+                break
+
+    candidates.sort(key=lambda item: (item[0], item[1], item[3].casefold()))
+    total = len(candidates)
+    matches: list[VertexMatch] = []
+    for _, _, vertex, cp, mp, d, field in candidates[:limit]:
+        children = [
+            to_node(child, _join(cp, _segment(child)), _join(mp, child.get("meta", "")), d + 1, "summary")
+            for child in vertex.get("successors", [])[:20]
+        ]
+        matches.append(
+            VertexMatch(
+                field=field,
+                node=to_node(vertex, cp, mp, d, "full"),
+                children=children,
+                children_truncated=len(vertex.get("successors", [])) > 20,
+            )
+        )
+
+    return record_evidence(
+        ctx,
+        VertexLookup(
+            path=path,
+            text=text.strip(),
+            matches=matches,
+            total=total,
+            truncated=total > limit,
         ),
     )
 
@@ -357,6 +462,7 @@ async def import_inforesource(
     )
     with suppress(Exception):
         upsert_path(path)
+    cache.invalidate(path)
     return result
 
 
@@ -391,6 +497,7 @@ async def update_vertex(
     data = await client(ctx).update(path, concept_path, metaconcept_path, mark, comment)
     if isinstance(data, ErrorResult):
         return data
+    cache.invalidate(path)
     return record_evidence(
         ctx, OperationResult(success=True, operation="update", path=path, code=data.get("code"))
     )
@@ -450,4 +557,5 @@ async def delete_inforesource(
     if mode in {"deleteIR", "trashIR", "clearIR"}:
         with suppress(Exception):
             remove_entry(path)
+        cache.invalidate(path)
     return result

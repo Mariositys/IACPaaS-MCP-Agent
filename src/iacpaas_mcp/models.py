@@ -38,6 +38,7 @@ MetaconceptPath = Annotated[
     Field(description="Путь из меток метавершин, соответствующих вершинам в concept_path"),
 ]
 Limit = Annotated[int, Field(ge=1, le=MAX_LIMIT, description="Максимум элементов в ответе")]
+Offset = Annotated[int, Field(ge=0, le=1_000_000, description="Смещение страницы")]
 Depth = Annotated[int, Field(ge=0, le=MAX_DEPTH, description="Глубина обхода (0 - только сама вершина)")]
 
 
@@ -148,7 +149,11 @@ class Subgraph(BaseModel):
     view: Literal["summary", "full"] = Field("summary", description="Режим вывода")
     nodes: list[GraphNode]
     edges: list[GraphEdge]
-    truncated: bool = Field(False, description="True, если подграф обрезан по limit")
+    offset: int = Field(0, description="Смещение текущей страницы")
+    total: int = Field(0, description="Всего вершин в поддереве на заданной глубине")
+    has_more: bool = Field(False, description="Есть ли следующая страница")
+    next_offset: int | None = Field(None, description="offset следующей страницы")
+    truncated: bool = Field(False, description="True, если показана не вся выборка")
     call_id: str = Field("", description="ID вызова для validate_answer")
 
 
@@ -164,6 +169,25 @@ class QueryResult(BaseModel):
     path: str = Field(description="Путь к ИР, к которому относится результат")
     query: str
     matches: list[GraphNode]
+    total: int
+    offset: int = 0
+    has_more: bool = False
+    next_offset: int | None = None
+    truncated: bool = False
+    call_id: str = Field("", description="ID вызова для validate_answer")
+
+
+class VertexMatch(BaseModel):
+    field: str = Field(description="Где найдено совпадение: label, meta или comment")
+    node: GraphNode
+    children: list[GraphNode]
+    children_truncated: bool = False
+
+
+class VertexLookup(BaseModel):
+    path: str
+    text: str
+    matches: list[VertexMatch]
     total: int
     truncated: bool = False
     call_id: str = Field("", description="ID вызова для validate_answer")

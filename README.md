@@ -45,7 +45,7 @@ Write-тулзы без `confirm=true` возвращают план опера�
 npx -y @modelcontextprotocol/inspector uv run iacpaas-mcp
 ```
 
-В Inspector видно 9 тулзов и их схемы. Без ключей IACPaaS сетевые чтения
+В Inspector видно 10 тулзов и их схемы. Без ключей IACPaaS сетевые чтения
 (кроме `list_inforesources`) вернут `kind="auth"`.
 
 ## Каталог ресурсов
@@ -139,8 +139,8 @@ Write-операции доступны только при `IACPAAS_ALLOW_WRITE
 нативный custom agent не гарантирует вызов: жёсткое принуждение есть только
 в режимах с completion tool.
 
-Доступны 5 read-only тулзов (включая `list_inforesources`), `validate_answer` и
-3 write-тулза. Сначала агент ищет ресурс через `list_inforesources` по локальному
+Доступны 6 read-only тулзов (включая `list_inforesources` и `find_vertex`),
+`validate_answer` и 3 write-тулза. Сначала агент ищет ресурс через `list_inforesources` по локальному
 `catalog.txt` и использует точный `path`; если ресурса нет в каталоге, чтение
 отклоняется. Запись выполняется только при `IACPAAS_ALLOW_WRITE=true`; перед
 `confirm=true` агент обязан показать план и получить явное подтверждение.
@@ -148,14 +148,16 @@ Write-операции доступны только при `IACPAAS_ALLOW_WRITE
 Примеры запросов (подставьте ресурс из `catalog.txt` и существующую вершину):
 - «Найди ресурс «<ресурс>»» - `list_inforesources`.
 - «Сколько вершин в ИР «<ресурс>»?» - `count_graph`.
-- «Найди вершину «<вершина>» в ИР «<ресурс>»» - `query_graph`.
+- «Найди вершину «<вершина>» в ИР «<ресурс>»» - `find_vertex`.
 - «Покажи подграф ИР «<ресурс>» от вершины «<вершина>» глубиной 2» - `get_subgraph`.
 
-`get_subgraph` по умолчанию использует `view="summary"` (без комментариев и лишних полей);
-для полного описания вершины передайте `view="full"`.
+`get_subgraph` по умолчанию использует `view="summary"` (без комментариев и лишних полей)
+и поддерживает страницы через `offset`/`next_offset`. Для полного описания вершины
+передайте `view="full"`. Полный экспорт ИР кэшируется в `data/graph-cache` на
+300 секунд; `refresh=true` принудительно перечитывает ресурс.
 
 Диагностика: `uv run iacpaas-mcp --version` проверяет запуск сервера, MCP Inspector
-показывает 9 тулзов и их схемы, включая `list_inforesources` и `validate_answer`.
+показывает 10 тулзов и их схемы, включая `list_inforesources`, `find_vertex` и `validate_answer`.
 Ошибки чтения приходят как `ErrorResult` с полем `kind` (`auth`, `not_found`,
 `platform`, `timeout`, `validation`); при проблемах с агентом проверьте Output канала Copilot
 и `.vscode/mcp.json`.

@@ -20,6 +20,7 @@ from . import store
 INDEX = Path(__file__).with_name("index.html")
 STATIC = Path(__file__).with_name("static")
 logger = logging.getLogger(__name__)
+store.init_db()
 
 
 @asynccontextmanager

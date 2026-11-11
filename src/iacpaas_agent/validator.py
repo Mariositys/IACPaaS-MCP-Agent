@@ -176,6 +176,49 @@ def _check_write_preview(answer: AgentAnswer, evidence: dict[str, Any]) -> list[
     return []
 
 
+def aggregate_kind(statement: str) -> str | None:
+    text = normalize_text(statement)
+    if "сумм" in text:
+        return "sum"
+    if "средн" in text or "average" in text:
+        return "avg"
+    if "максим" in text or "maximum" in text:
+        return "max"
+    if "миним" in text or "minimum" in text:
+        return "min"
+    return None
+
+
+def is_range_statement(statement: str) -> bool:
+    text = normalize_text(statement)
+    return ("от " in text and " до " in text) or "диапазон" in text or "интервал" in text
+
+
+def is_presence_statement(statement: str) -> bool:
+    return "присутству" in normalize_text(statement)
+
+
+def value_matches(claim_value: Any, actual: Any) -> bool:
+    if same_value(claim_value, actual):
+        return True
+    if isinstance(claim_value, str) and isinstance(actual, str):
+        return normalize_text(claim_value) in normalize_text(actual)
+    return False
+
+
+def aggregate_values(kind: str, values: list[Any]) -> Any:
+    numbers = [value for value in values if isinstance(value, (int, float)) and not isinstance(value, bool)]
+    if len(numbers) != len(values) or not numbers:
+        raise ValueError("для агрегата нужны числовые значения")
+    if kind == "sum":
+        return sum(numbers)
+    if kind == "avg":
+        return sum(numbers) / len(numbers)
+    if kind == "max":
+        return max(numbers)
+    return min(numbers)
+
+
 def _check_claim(claim: Claim, evidence: dict[str, Any]) -> list[str]:
     reasons: list[str] = []
     has_expr = any(source.expr for source in claim.sources)
@@ -183,6 +226,8 @@ def _check_claim(claim: Claim, evidence: dict[str, Any]) -> list[str]:
         return [f"«{claim.statement}»: нет value или quote для проверки"]
 
     quote_ok = False
+    actuals: list[Any] = []
+    plain_actuals: list[Any] = []
     for source in claim.sources:
         if source.call_id not in evidence:
             reasons.append(f"источник '{source.call_id}' не найден среди вызовов")
@@ -208,12 +253,44 @@ def _check_claim(claim: Claim, evidence: dict[str, Any]) -> list[str]:
                 continue
             if not same_value(claim.value, actual):
                 reasons.append(f"«{claim.statement}»: ожидалось {claim.value!r}, в данных {actual!r}")
-            continue
-
-        if claim.value is not None and not same_value(claim.value, actual):
-            reasons.append(f"«{claim.statement}»: ожидалось {claim.value!r}, в данных {actual!r}")
+            actuals.append(actual)
+        else:
+            actuals.append(actual)
+            plain_actuals.append(actual)
         if claim.quote is not None and quote_matches(claim.quote, actual):
             quote_ok = True
+
+    if claim.value is not None:
+        kind = aggregate_kind(claim.statement) if len(plain_actuals) > 1 and not has_expr else None
+        if kind is not None:
+            try:
+                calculated = aggregate_values(kind, plain_actuals)
+            except ValueError as e:
+                reasons.append(f"«{claim.statement}»: {e}")
+            else:
+                if not same_value(claim.value, calculated):
+                    reasons.append(f"«{claim.statement}»: ожидалось {claim.value!r}, в данных {calculated!r}")
+        elif not has_expr:
+            if is_presence_statement(claim.statement) and any(actual == 1 for actual in plain_actuals):
+                pass
+            elif is_range_statement(claim.statement):
+                numbers = [
+                    value
+                    for value in plain_actuals
+                    if isinstance(value, (int, float)) and not isinstance(value, bool)
+                ]
+                if len(set(numbers)) >= 2 and any(
+                    same_value(claim.value, endpoint) for endpoint in (min(numbers), max(numbers))
+                ):
+                    pass
+                else:
+                    reasons.append(
+                        f"«{claim.statement}»: ожидалось значение на границе диапазона, "
+                        f"в данных {plain_actuals!r}"
+                    )
+            elif not any(value_matches(claim.value, actual) for actual in plain_actuals):
+                actual = plain_actuals[0] if plain_actuals else None
+                reasons.append(f"«{claim.statement}»: ожидалось {claim.value!r}, в данных {actual!r}")
 
     if claim.quote is not None and not quote_ok:
         reasons.append(f"«{claim.statement}»: цитата не найдена в источнике")

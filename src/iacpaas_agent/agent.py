@@ -46,13 +46,13 @@ TOOL_STATUS = {
     "delete_inforesource": "Выполняю удаление…",
 }
 
-CONTEXT_LIMIT_TOKENS = 128_000
+CONTEXT_LIMIT_TOKENS = 1_000_000
 OUTPUT_RESERVE_TOKENS = 8_000
 CHARS_PER_TOKEN = 3
 TOKEN_SAFETY = 0.8
 PROMPT_CHAR_LIMIT = int((CONTEXT_LIMIT_TOKENS - OUTPUT_RESERVE_TOKENS) * CHARS_PER_TOKEN * TOKEN_SAFETY)
 HISTORY_CHAR_LIMIT = int(PROMPT_CHAR_LIMIT * 0.75)
-CONTEXT_LIMIT_TEXT = "История не помещается в контекст 128 000 токенов. Начните новый чат."
+CONTEXT_LIMIT_TEXT = f"История не помещается в контекст {CONTEXT_LIMIT_TOKENS:,} токенов. Начните новый чат."
 
 
 class AgentState(TypedDict):
@@ -441,9 +441,19 @@ def build_graph(model: ChatOpenAI, tools: list[StructuredTool], on_event: EventC
                 claims=[],
                 requires_confirmation=True,
             )
-        else:
-            answer = fail_safe_answer()
-        return {"answer": answer, "verdict": Verdict(ok=True, reasons=[]), "final": answer.answer}
+            return {"answer": answer, "verdict": Verdict(ok=True, reasons=[]), "final": answer.answer}
+
+        if state["answer"] is not None:
+            verdict = state["verdict"] or Verdict(ok=False, reasons=state["reasons"])
+            return {
+                "answer": state["answer"],
+                "verdict": verdict,
+                "reasons": state["reasons"],
+                "final": state["answer"].answer,
+            }
+
+        answer = fail_safe_answer()
+        return {"answer": answer, "verdict": Verdict(ok=False, reasons=[]), "final": answer.answer}
 
     def route_agent(state: AgentState) -> str:
         last = state["messages"][-1]

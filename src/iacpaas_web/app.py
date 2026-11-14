@@ -16,6 +16,7 @@ from iacpaas_agent.agent import MODEL_NAME, AgentRuntime, run_agent
 from iacpaas_agent.prompts import PROMPT_VERSION
 
 from . import store
+from .markdown_render import render_markdown
 
 INDEX = Path(__file__).with_name("index.html")
 STATIC = Path(__file__).with_name("static")
@@ -86,7 +87,8 @@ async def dialogue(dialogue_id: str) -> Any:
     current = store.get_dialogue(dialogue_id)
     if current is None:
         return JSONResponse(status_code=404, content={"error": "Чат не найден", "kind": "not_found"})
-    return {"dialogue": current, "messages": store.get_messages(dialogue_id)}
+    messages = [_with_answer_html(message) for message in store.get_messages(dialogue_id)]
+    return {"dialogue": current, "messages": messages}
 
 
 def _chat_error(exc: Exception) -> dict[str, Any]:
@@ -101,6 +103,15 @@ def _chat_error(exc: Exception) -> dict[str, Any]:
             "kind": "auth",
         }
     return {"error": message, "kind": "platform"}
+
+
+def _with_answer_html(result: dict[str, Any]) -> dict[str, Any]:
+    answer = result.get("answer")
+    text = answer.get("answer") if isinstance(answer, dict) else None
+    if not isinstance(text, str) or not text:
+        text = result.get("final")
+    result["answer_html"] = render_markdown(text if isinstance(text, str) else "")
+    return result
 
 
 def _sse(payload: dict[str, Any]) -> str:
@@ -128,6 +139,7 @@ async def chat_stream(request: ChatRequest, http_request: Request) -> StreamingR
                     runtime=runtime,
                     on_event=emit,
                 )
+                result = _with_answer_html(result)
                 result["dialogue_id"] = store.save_message(dialogue_id, request.question, result)
                 await queue.put({"type": "final", "result": result})
             except asyncio.CancelledError:
@@ -163,6 +175,7 @@ async def chat(request: ChatRequest, http_request: Request) -> Any:
         history = store.get_messages(dialogue_id) if dialogue_id and store.get_dialogue(dialogue_id) else []
         runtime = getattr(http_request.app.state, "agent_runtime", None)
         result = await run_agent(request.question, read_only=False, history=history, runtime=runtime)
+        result = _with_answer_html(result)
         result["dialogue_id"] = store.save_message(dialogue_id, request.question, result)
         return result
     except Exception as e:  # noqa: BLE001 - ошибка показывается в чате

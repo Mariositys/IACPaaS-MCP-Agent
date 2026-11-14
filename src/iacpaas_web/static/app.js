@@ -18,6 +18,17 @@ function h(tag, className, text) {
   return node;
 }
 
+function setAnswer(node, data) {
+  const answer = data.answer || {};
+  const fallback = answer.answer || data.final || "Нет ответа.";
+  node.classList.add("answer-text", "markdown");
+  if (typeof data.answer_html === "string" && data.answer_html) {
+    node.innerHTML = data.answer_html;
+  } else {
+    node.textContent = fallback;
+  }
+}
+
 function scrollDown() {
   syncComposerSpace();
   messages.scrollTop = messages.scrollHeight;
@@ -351,7 +362,9 @@ function renderAnswer(data) {
   bubble.append(head);
 
   const answer = data.answer || {};
-  bubble.append(h("div", "answer-text", answer.answer || data.final || "Нет ответа."));
+  const answerNode = h("div");
+  setAnswer(answerNode, data);
+  bubble.append(answerNode);
 
   if (answer.claims && answer.claims.length) {
     bubble.append(renderClaims(answer.claims, data.calls));

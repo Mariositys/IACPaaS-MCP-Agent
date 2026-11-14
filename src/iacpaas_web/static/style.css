@@ -173,6 +173,9 @@ button { font: inherit; cursor: pointer; }
 .user-bubble { background: var(--accent); border-color: var(--accent); color: #fff; }
 .answer-text { white-space: pre-wrap; line-height: 1.5; }
 .answer-text.markdown { white-space: normal; }
+.typing-word { display: none; }
+.typing-word.typing-visible { display: inline; }
+.typing-block { display: none; }
 .markdown > :first-child { margin-top: 0; }
 .markdown > :last-child { margin-bottom: 0; }
 .markdown p { margin: 0 0 .65em; }

@@ -30,6 +30,73 @@ function setAnswer(node, data) {
   }
 }
 
+function revealWords(node, onDone, onProgress) {
+  const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+  const textNodes = [];
+  while (walker.nextNode()) {
+    if (walker.currentNode.nodeValue && walker.currentNode.nodeValue.trim()) {
+      textNodes.push(walker.currentNode);
+    }
+  }
+
+  const words = [];
+  const blocks = [];
+  for (const textNode of textNodes) {
+    const parent = textNode.parentNode;
+    if (!parent) continue;
+    const fragment = document.createDocumentFragment();
+    const blockChain = [];
+    let block = textNode.parentElement?.closest("p,li,h1,h2,h3,h4,h5,h6,pre,blockquote,tr");
+    while (block && block !== node) {
+      blockChain.push(block);
+      block = block.parentElement?.closest("p,li,h1,h2,h3,h4,h5,h6,pre,blockquote,tr");
+    }
+    for (const item of blockChain) {
+      if (!item.classList.contains("typing-block")) {
+        item.classList.add("typing-block");
+        blocks.push(item);
+      }
+    }
+    for (const part of textNode.nodeValue.split(/(\s+)/)) {
+      if (!part) continue;
+      if (/^\s+$/.test(part)) {
+        fragment.append(document.createTextNode(part));
+      } else {
+        const word = document.createElement("span");
+        word.className = "typing-word";
+        word.textContent = part;
+        word._typingBlocks = blockChain;
+        fragment.append(word);
+        words.push(word);
+      }
+    }
+    parent.replaceChild(fragment, textNode);
+  }
+
+  if (!words.length) {
+    for (const block of blocks) block.classList.remove("typing-block");
+    onDone?.();
+    return;
+  }
+
+  const delay = Math.max(8, Math.min(24, 3500 / words.length));
+  let index = 0;
+  const timer = setInterval(() => {
+    const word = words[index];
+    for (const block of word._typingBlocks || []) {
+      block.classList.remove("typing-block");
+    }
+    word.classList.add("typing-visible");
+    index += 1;
+    if (index % 10 === 0) onProgress?.();
+    if (index >= words.length) {
+      clearInterval(timer);
+      onProgress?.();
+      onDone?.();
+    }
+  }, delay);
+}
+
 function scrollDown() {
   syncComposerSpace();
   messages.scrollTop = messages.scrollHeight;
@@ -384,7 +451,7 @@ function renderClaims(claims, calls) {
   return details;
 }
 
-function renderAnswer(data) {
+function renderAnswer(data, animate = false) {
   const row = h("div", "row agent");
   const bubble = h("div", "bubble");
   const head = h("div", "bubble-head");
@@ -397,26 +464,31 @@ function renderAnswer(data) {
   setAnswer(answerNode, data);
   bubble.append(answerNode);
 
-  if (answer.claims && answer.claims.length) {
-    bubble.append(renderClaims(answer.claims, data.calls));
-  }
-  if (data.verdict && !data.verdict.ok && data.verdict.reasons && data.verdict.reasons.length) {
-    const reasons = h("div", "claim");
-    reasons.append(h("div", "claim-statement", "Причины отказа валидатора"));
-    for (const reason of data.verdict.reasons) {
-      reasons.append(h("div", "claim-meta", reason));
+  const appendSources = () => {
+    if (answer.claims && answer.claims.length) {
+      bubble.append(renderClaims(answer.claims, data.calls));
     }
-    bubble.append(reasons);
-  } else if (data.reasons && data.reasons.length) {
-    const reasons = h("div", "claim");
-    reasons.append(h("div", "claim-statement", "Почему ответ не подтверждён"));
-    for (const reason of data.reasons) {
-      reasons.append(h("div", "claim-meta", reason));
+    if (data.verdict && !data.verdict.ok && data.verdict.reasons && data.verdict.reasons.length) {
+      const reasons = h("div", "claim");
+      reasons.append(h("div", "claim-statement", "Причины отказа валидатора"));
+      for (const reason of data.verdict.reasons) {
+        reasons.append(h("div", "claim-meta", reason));
+      }
+      bubble.append(reasons);
+    } else if (data.reasons && data.reasons.length) {
+      const reasons = h("div", "claim");
+      reasons.append(h("div", "claim-statement", "Почему ответ не подтверждён"));
+      for (const reason of data.reasons) {
+        reasons.append(h("div", "claim-meta", reason));
+      }
+      bubble.append(reasons);
     }
-    bubble.append(reasons);
-  }
+    scrollDown();
+  };
 
   row.append(bubble);
+  if (animate) revealWords(answerNode, appendSources, scrollDown);
+  else appendSources();
   return row;
 }
 
@@ -570,7 +642,7 @@ async function ask(question) {
       currentDialogueId = finalData.dialogue_id;
       localStorage.setItem("iacpaas_dialogue", currentDialogueId);
       registerCalls(finalData.calls);
-      messages.append(renderAnswer(finalData));
+      messages.append(renderAnswer(finalData, true));
       loadDialogues();
       scrollDown();
     }

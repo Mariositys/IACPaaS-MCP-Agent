@@ -74,6 +74,14 @@ function syncComposerSpace() {
   }
 
   messages.style.paddingBottom = `${form.offsetHeight + 24}px`;
+
+  const field = form.querySelector(".composer-field");
+  if (field) {
+    const fieldRect = field.getBoundingClientRect();
+    const mainRect = main.getBoundingClientRect();
+    const fadeBottom = Math.max(0, mainRect.bottom - fieldRect.top);
+    main.style.setProperty("--composer-fade-bottom", `${fadeBottom}px`);
+  }
 }
 
 function updateSendState() {
@@ -218,7 +226,7 @@ function sourceLabel(pointer) {
 function sourceGroup(pointer) {
   const value = String(pointer || "");
   if (value.startsWith("/matches/")) return "Вершина";
-  if (value.startsWith("/values/")) return "Значения";
+  if (value.startsWith("/values/")) return "Значения свойств";
   if (value.startsWith("/resources/")) return "Ресурсы";
   if (/^\/(path|total|truncated)$/.test(value)) return "Результат поиска";
   if (/^\/(nodes|edges|start)$/.test(value)) return "Результат подсчёта";
@@ -262,7 +270,15 @@ function findCall(callId, calls) {
   return callRegistry.get(rawId) || null;
 }
 
-function factLabel(claim, source) {
+function terminalValue(call, pointer) {
+  const match = String(pointer || "").match(/^\/values\/(\d+)/);
+  if (!match) return null;
+  return call?.result?.values?.[Number(match[1])] || null;
+}
+
+function factLabel(claim, source, call) {
+  const terminal = terminalValue(call, source.pointer);
+  if (terminal?.property) return terminal.property;
   const label = sourceLabel(source.pointer);
   if (label !== "Название" && label !== "name") return label;
   const statement = String(claim.statement || "").trim();
@@ -271,7 +287,7 @@ function factLabel(claim, source) {
 
 function sourceHead(tool, path = "", summary = false) {
   const head = h("div", summary ? "source-head source-head-summary" : "source-head");
-  head.append(h("div", "source-tool", tool || "тулз"));
+  head.append(h("div", "source-tool", `Вызов инструмента: ${tool || "тулз"}`));
   if (path) head.append(h("div", "source-path", path));
   return head;
 }
@@ -356,7 +372,7 @@ function renderClaims(claims, calls) {
       group.append(h("div", "source-group-title", name));
       for (const { claim, source } of items) {
         const fact = h("div", "source-fact");
-        fact.append(h("span", "fact-label", factLabel(claim, source)));
+        fact.append(h("span", "fact-label", factLabel(claim, source, call)));
         fact.append(h("span", "fact-value", sourceValue(claim.value)));
         group.append(fact);
       }
@@ -365,17 +381,6 @@ function renderClaims(claims, calls) {
     details.append(card);
   }
 
-  const technical = h("details", "technical");
-  technical.append(h("summary", null, "Технические детали"));
-  for (const claim of claims) {
-    for (const source of claim.sources || []) {
-      const call = findCall(source.call_id, calls);
-      const tool = call ? call.tool : "?";
-      const pointer = source.pointer || "''";
-      technical.append(h("div", "technical-line", `${source.call_id} · ${tool} · ${pointer}`));
-    }
-  }
-  details.append(technical);
   return details;
 }
 

@@ -139,7 +139,7 @@ Write-операции доступны только при `IACPAAS_ALLOW_WRITE
 нативный custom agent не гарантирует вызов: жёсткое принуждение есть только
 в режимах с completion tool.
 
-Доступны 7 read-only тулзов (включая `list_inforesources`, `find_vertex` и
+Доступны 7 read-only тулзов (включая `list_inforesources`, `locate_vertex` и
 `get_terminal_values`), `validate_answer` и 3 write-тулза. Сначала агент ищет ресурс через `list_inforesources` по локальному
 `catalog.txt` и использует точный `path`; если ресурса нет в каталоге, чтение
 отклоняется. Запись выполняется только при `IACPAAS_ALLOW_WRITE=true`; перед
@@ -148,20 +148,21 @@ Write-операции доступны только при `IACPAAS_ALLOW_WRITE
 Примеры запросов (подставьте ресурс из `catalog.txt` и существующую вершину):
 - «Найди ресурс «<ресурс>»» - `list_inforesources`.
 - «Сколько вершин в ИР «<ресурс>»?» - `count_graph`.
-- «Найди вершину «<вершина>» в ИР «<ресурс>»» - `find_vertex`.
-- «Какие значения у состава «<вершина>»?» - `find_vertex`, затем `get_terminal_values`.
+- «Найди вершину «<вершина>» в ИР «<ресурс>»» - `locate_vertex`.
+- «Какие значения у состава «<вершина>»?» - `locate_vertex`, затем `get_terminal_values`.
 - «Покажи подграф ИР «<ресурс>» от вершины «<вершина>» глубиной 2» - `get_subgraph`.
 
-`find_vertex` возвращает явный `path` и потомков до `depth`, поэтому найденный путь
-можно сразу передать в `get_terminal_values` или `get_subgraph`. `query_graph` теперь
-по умолчанию отдаёт компактные узлы (`label`, `type`, `meta`, `concept_path`).
+`locate_vertex` возвращает явный `path` и потомков до `depth`, поэтому найденный путь
+можно сразу передать в `get_terminal_values` или `get_subgraph`. `search_vertices`
+по умолчанию отдаёт компактные узлы (`label`, `type`, `meta`, `concept_path`);
+параметр `by="label"` ищет по названию/значению, `by="meta"` — по мете.
 `get_subgraph` по умолчанию использует `view="summary"` (без комментариев и лишних полей)
 и поддерживает страницы через `offset`/`next_offset`. Для полного описания вершины
 передайте `view="full"`. Полный экспорт ИР кэшируется в `data/graph-cache` на
 300 секунд; `refresh=true` принудительно перечитывает ресурс.
 
 Диагностика: `uv run iacpaas-mcp --version` проверяет запуск сервера, MCP Inspector
-показывает 11 тулзов и их схемы, включая `list_inforesources`, `find_vertex`, `get_terminal_values` и `validate_answer`.
+показывает 11 тулзов и их схемы, включая `list_inforesources`, `locate_vertex`, `get_terminal_values` и `validate_answer`.
 Ошибки чтения приходят как `ErrorResult` с полем `kind` (`auth`, `not_found`,
 `platform`, `timeout`, `validation`); при проблемах с агентом проверьте Output канала Copilot
 и `.vscode/mcp.json`.

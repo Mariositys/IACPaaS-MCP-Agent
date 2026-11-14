@@ -9,8 +9,8 @@
 | `get_inforesource` | `GET /api/data/export/user-item` | первый раз скачивает полный ИР в локальный кэш; `metadata` отдает корень |
 | `get_subgraph` | локальный кэш полного экспорта | сервер; страницы `offset`/`next_offset`, без повторного скачивания |
 | `count_graph` | локальный кэш полного экспорта | сервер, **аналога в API нет** |
-| `query_graph` | локальный кэш полного экспорта | сервер; компактные узлы по умолчанию, страницы `offset`/`next_offset`, **аналога в API нет** |
-| `find_vertex` | локальный кэш полного экспорта | сервер; поиск + явный `path` + потомки до `depth` одним вызовом |
+| `search_vertices` | локальный кэш полного экспорта | сервер; `by="label|meta"`, компактные узлы по умолчанию, страницы `offset`/`next_offset`, **аналога в API нет** |
+| `locate_vertex` | локальный кэш полного экспорта | сервер; поиск + явный `path` + потомки до `depth` одним вызовом |
 | `get_terminal_values` | локальный кэш полного экспорта | сервер; плоский список «свойство → значение» для поддерева, **аналога в API нет** |
 | `validate_answer` | — локальная проверка | сервер; сверяет `AgentAnswer` с evidence процесса по `call_id` |
 | `import_inforesource` | `POST /api/data/import` | сервер, требуется `confirm=true` |
@@ -21,7 +21,7 @@
 
 - Эндпоинта «список ИР / поиск по фонду» нет. `list_inforesources` ищет только
   по локальному `catalog.txt`; отсутствие в каталоге не значит отсутствие на платформе.
-- `count_graph`, `query_graph`, `get_subgraph`, `find_vertex`, `get_terminal_values`
+- `count_graph`, `search_vertices`, `get_subgraph`, `locate_vertex`, `get_terminal_values`
   не являются методами платформы:
   они работают по полному экспорту, сохраненному в `data/graph-cache`.
 - Кэш живет 300 секунд; `refresh=true` перечитывает ресурс.

@@ -169,7 +169,7 @@ class GraphCounts(BaseModel):
 
 class QueryResult(BaseModel):
     path: str = Field(description="Путь к ИР, к которому относится результат")
-    query: str
+    by: Literal["label", "meta"] = Field("label", description="Поле поиска")
     view: Literal["compact", "summary", "full"] = Field("compact", description="Режим вывода")
     matches: list[GraphNode]
     total: int

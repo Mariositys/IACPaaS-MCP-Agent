@@ -5,8 +5,8 @@ list_inforesources     -> локальный catalog.txt
 get_inforesource       -> GET /api/data/export/user-item (полный экспорт в локальный кэш)
 get_subgraph           -> локальный кэш + страницы offset/next_offset
 count_graph            -> локальный кэш + подсчет по дереву
-query_graph            -> локальный кэш + поиск по дереву
-find_vertex            -> локальный кэш + поиск вершины и её ветки
+search_vertices        -> локальный кэш + список совпавших вершин
+locate_vertex          -> локальный кэш + поиск вершины и её ветки
 get_terminal_values    -> локальный кэш + плоский список терминальных значений
 validate_answer        -> локальная проверка AgentAnswer по evidence сессии
 import_inforesource    -> POST   /api/data/import
@@ -358,11 +358,11 @@ async def count_graph(
 
 
 @mcp.tool(annotations=READ, tags={"read"})
-async def query_graph(
+async def search_vertices(
     ctx: Context,
     path: IrPath,
-    query: Literal["find_by_label", "find_by_meta"],
     text: Annotated[str, Field(min_length=1, description="Имя/значение вершины или метка метавершины")],
+    by: Literal["label", "meta"] = "label",
     exact: bool = False,
     start: ConceptPath = "",
     limit: Limit = 50,
@@ -370,7 +370,7 @@ async def query_graph(
     view: Literal["compact", "summary", "full"] = "compact",
     refresh: bool = False,
 ) -> QueryResult | ErrorResult:
-    """Найти вершины по имени/значению (find_by_label) или по метке метавершины (find_by_meta)."""
+    """Найти все совпадения по названию/значению (by="label") или мете (by="meta")."""
     doc = await cache.load(client(ctx), path, refresh=refresh)
     if isinstance(doc, ErrorResult):
         return doc
@@ -381,7 +381,7 @@ async def query_graph(
     needle = text.casefold()
     matches: list[GraphNode] = []
     for vertex, cp, mp, d in walk(root[0], root[1], root[2], 0):
-        field = vertex.get("meta", "") if query == "find_by_meta" else vertex.get("name", vertex.get("value", ""))
+        field = vertex.get("meta", "") if by == "meta" else vertex.get("name", vertex.get("value", ""))
         hay = str(field).casefold()
         if (hay == needle) if exact else (needle in hay):
             matches.append(to_node(vertex, cp, mp, d, view))
@@ -391,7 +391,7 @@ async def query_graph(
         ctx,
         QueryResult(
             path=path,
-            query=query,
+            by=by,
             view=view,
             matches=page,
             total=len(matches),
@@ -404,7 +404,7 @@ async def query_graph(
 
 
 @mcp.tool(annotations=READ, tags={"read"})
-async def find_vertex(
+async def locate_vertex(
     ctx: Context,
     path: IrPath,
     text: Annotated[str, Field(min_length=1, max_length=200, description="Подстрока названия, значения, меты или комментария")],

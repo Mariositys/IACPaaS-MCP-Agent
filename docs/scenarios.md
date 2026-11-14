@@ -23,13 +23,13 @@ uv run iacpaas-mcp
 
 ## 3. Подграф, значения и поиск
 
-Вызвать `get_subgraph` с `path`, `start` и `depth=2`; затем `find_vertex`,
-`get_terminal_values` от найденного `path`, `count_graph` и `query_graph`.
+Вызвать `get_subgraph` с `path`, `start` и `depth=2`; затем `locate_vertex`,
+`get_terminal_values` от найденного `path`, `count_graph` и `search_vertices`.
 
 Ожидается: у вершин канонический `concept_path`; `Subgraph.path` и `QueryResult.path`
-содержат путь ИР; при превышении `limit` стоит `truncated=true`. `find_vertex` отдаёт
+содержат путь ИР; при превышении `limit` стоит `truncated=true`. `locate_vertex` отдаёт
 явный `path`, а `get_terminal_values` — плоский список «свойство → значение» за один
-вызов. Компактный `query_graph` содержит только `label`, `type`, `meta`, `concept_path`.
+вызов. Компактный `search_vertices` содержит только `label`, `type`, `meta`, `concept_path`.
 
 ## 4. Несуществующая вершина
 
@@ -75,14 +75,14 @@ uv run iacpaas-agent "Сколько вершин в ИР «<ресурс>»?"
 
 - «Найди ресурс «<ресурс>»» - вызов `list_inforesources`.
 - «Сколько вершин в ИР «<ресурс>»?» - вызов `count_graph`.
-- «Найди вершину «<вершина>» в ИР «<ресурс>»» - вызов `find_vertex`.
-- «Какие значения у состава «<вершина>»?» - `find_vertex`, затем `get_terminal_values`.
+- «Найди вершину «<вершина>» в ИР «<ресурс>»» - вызов `locate_vertex`.
+- «Какие значения у состава «<вершина>»?» - `locate_vertex`, затем `get_terminal_values`.
 - «Покажи подграф ИР «<ресурс>» от вершины «<вершина>» глубиной 2» - вызов `get_subgraph`.
 
 Один и тот же вопрос можно прогнать в CLI (сценарий 6) и в VS Code, чтобы сравнить
 поведение standalone- и IDE-режимов.
 
-Доступны 7 read-only тулзов (включая `list_inforesources`, `find_vertex` и
+Доступны 7 read-only тулзов (включая `list_inforesources`, `locate_vertex` и
 `get_terminal_values`), `validate_answer` и 3 write-тулза. После чтения агент обязан вызвать `validate_answer` с `AgentAnswer`,
 где каждый claim ссылается на
 `call_id` из результата и JSON Pointer. При `ok=false` агент исправляет ответ и

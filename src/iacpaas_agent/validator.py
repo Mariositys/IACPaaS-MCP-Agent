@@ -160,7 +160,8 @@ def _check_write_preview(answer: AgentAnswer, evidence: dict[str, Any]) -> list[
     text = " ".join([answer.answer, *(claim.statement for claim in answer.claims)]).casefold()
     success_pattern = re.compile(
         r"\b(?:удал[её]н(?:а|о|ы)?|измен[её]н(?:а|о|ы)?|"
-        r"выполнен(?:а|о|ы)?|обновл[её]н(?:а|о|ы)?|успешно)\b"
+        r"(?<!будет )(?<!не )выполнен(?:а|о|ы)?|"
+        r"обновл[её]н(?:а|о|ы)?)\b"
     )
     if answer.requires_confirmation:
         if not all_previews:

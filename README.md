@@ -35,7 +35,8 @@ Copy-Item .env.example .env
 
 `.env` не коммитится. 
 Запись по умолчанию выключена; включить: `IACPAAS_ALLOW_WRITE=true`.
-Write-тулзы без `confirm=true` возвращают план операции и ничего не меняют.
+Preview-тулзы показывают план операции и ничего не меняют; apply вызывается только
+веб-сервером после нажатия кнопки «Подтвердить».
 
 ## MCP Inspector
 
@@ -45,7 +46,7 @@ Write-тулзы без `confirm=true` возвращают план опера�
 npx -y @modelcontextprotocol/inspector uv run iacpaas-mcp
 ```
 
-В Inspector видно 11 тулзов и их схемы. Без ключей IACPaaS сетевые чтения
+В Inspector видно 14 тулзов и их схемы. Без ключей IACPaaS сетевые чтения
 (кроме `list_inforesources`) вернут `kind="auth"`.
 
 ## Каталог ресурсов
@@ -116,7 +117,7 @@ uv run iacpaas-web
 Все чаты и ходы хранятся в `data/chat.db` (SQLite) и не удаляются. Новый чат создается
 при первом сообщении. В модель уходят только ходы, помещающиеся в жесткий лимит
 1 000 000 токенов; остальные остаются в истории и видны в интерфейсе. Отказы и fail-safe
-сохраняются, но в контекст модели не включаются; исключение - refused-ход с write-вызовом,
+сохраняются, но в контекст модели не включаются; исключение - refused-ход с preview-вызовом,
 он нужен для подтверждения.
 
 Чат работает без авторизации пользователей и слушает `127.0.0.1`. MCP-сервер
@@ -125,10 +126,10 @@ uv run iacpaas-web
 завершается. Для ответов нужны `IACPAAS_AGENT_API_KEY`, `IACPAAS_AGENT_MODEL` и
 `IACPAAS_AGENT_BASE_URL`; без ключей IACPaaS сетевые чтения (кроме
 `list_inforesources`) вернут `kind="auth"`.
-Write-операции доступны только при `IACPAAS_ALLOW_WRITE=true`; агент сначала
-показывает план с `confirm=false` и выполняет изменение с `confirm=true` только
-после явного подтверждения пользователя. История хранит аргументы write-вызовов,
-поэтому подтверждение можно отправить следующим сообщением в том же чате.
+Write-операции доступны только при `IACPAAS_ALLOW_WRITE=true`. Агент вызывает только
+preview-тулзы и показывает карточку операции; apply-тулзы вызываются веб-сервером
+после кнопки «Подтвердить». CLI и VS Code не получают preview/apply и не могут
+выполнить write. Подтверждение текстом не выполняется.
 
 ## VS Code
 
@@ -143,10 +144,10 @@ Write-операции доступны только при `IACPAAS_ALLOW_WRITE
 в режимах с completion tool.
 
 Доступны 7 read-only тулзов (включая `list_inforesources`, `locate_vertex` и
-`get_terminal_values`), `validate_answer` и 3 write-тулза. Сначала агент ищет ресурс через `list_inforesources` по локальному
-`catalog.txt` и использует точный `path`; если ресурса нет в каталоге, чтение
-отклоняется. Запись выполняется только при `IACPAAS_ALLOW_WRITE=true`; перед
-`confirm=true` агент обязан показать план и получить явное подтверждение.
+`get_terminal_values`), `validate_answer`, 3 preview-тулза и 3 внутренних apply-тулза.
+Сначала агент ищет ресурс через `list_inforesources` по локальному `catalog.txt` и
+использует точный `path`; если ресурса нет в каталоге, чтение отклоняется.
+В VS Code и CLI preview/apply недоступны; веб-сервер вызывает apply после подтверждения.
 
 Примеры запросов (подставьте ресурс из `catalog.txt` и существующую вершину):
 - «Найди ресурс «<ресурс>»» - `list_inforesources`.
@@ -162,13 +163,16 @@ Write-операции доступны только при `IACPAAS_ALLOW_WRITE
 `get_terminal_values` умеет пакетный `starts=[...]`, ограничивает страницу по
 `max_chars` и при усечении возвращает `hint`/`suggested_starts`; `concept_path`
 включается только через `include_path=true`.
+Write-preview показывается карточкой с операцией, путём и параметрами; кнопки
+«Подтвердить»/«Отменить» вызывают внутренний apply-тулз через веб-сервер, без
+повторной генерации ответа. Текстовое «да» операцию не выполняет.
 `get_subgraph` по умолчанию использует `view="summary"` (без комментариев и лишних полей)
 и поддерживает страницы через `offset`/`next_offset`. Для полного описания вершины
 передайте `view="full"`. Полный экспорт ИР кэшируется в `data/graph-cache` на
 300 секунд; `refresh=true` принудительно перечитывает ресурс.
 
 Диагностика: `uv run iacpaas-mcp --version` проверяет запуск сервера, MCP Inspector
-показывает 11 тулзов и их схемы, включая `list_inforesources`, `locate_vertex`, `get_terminal_values` и `validate_answer`.
+показывает 14 тулзов и их схемы, включая `list_inforesources`, `locate_vertex`, `get_terminal_values`, `preview_*` и `validate_answer`.
 Ошибки чтения приходят как `ErrorResult` с полем `kind` (`auth`, `not_found`,
 `platform`, `timeout`, `validation`); при проблемах с агентом проверьте Output канала Copilot
 и `.vscode/mcp.json`.

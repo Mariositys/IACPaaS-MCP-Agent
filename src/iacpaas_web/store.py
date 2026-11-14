@@ -142,3 +142,32 @@ def save_message(dialogue_id: str | None, question: str, result: dict[str, Any])
         conn.execute("UPDATE dialogues SET updated_at = ? WHERE id = ?", (now, dialogue_id))
 
     return dialogue_id
+
+
+def update_call(dialogue_id: str, call_id: str, **updates: Any) -> bool:
+    """Обновить служебные поля вызова в сохраненном сообщении."""
+    with closing(connect()) as conn, conn:
+        rows = conn.execute(
+            "SELECT id, calls FROM messages WHERE dialogue_id = ? ORDER BY id DESC",
+            (dialogue_id,),
+        ).fetchall()
+        for row in rows:
+            calls = json.loads(row["calls"])
+            changed = False
+            for call in calls:
+                if call.get("call_id") == call_id:
+                    call.update(updates)
+                    changed = True
+                    break
+            if not changed:
+                continue
+            conn.execute(
+                "UPDATE messages SET calls = ? WHERE id = ?",
+                (json.dumps(calls, ensure_ascii=False, default=str), row["id"]),
+            )
+            conn.execute(
+                "UPDATE dialogues SET updated_at = ? WHERE id = ?",
+                (time.time(), dialogue_id),
+            )
+            return True
+    return False

@@ -13,9 +13,12 @@
 | `locate_vertex` | локальный кэш полного экспорта | сервер; поиск + явный `path` + потомки до `depth` одним вызовом |
 | `get_terminal_values` | локальный кэш полного экспорта | сервер; плоский список «свойство → значение», `starts=[...]`, лимит по размеру и `suggested_starts`, **аналога в API нет** |
 | `validate_answer` | — локальная проверка | сервер; сверяет `AgentAnswer` с evidence процесса по `call_id` |
-| `import_inforesource` | `POST /api/data/import` | сервер, требуется `confirm=true` |
-| `update_vertex` | `PUT /api/data/update` | сервер, требуется `confirm=true` |
-| `delete_inforesource` | `DELETE /api/data/delete` | сервер, требуется `confirm=true` |
+| `preview_import` | `POST /api/data/import` | только план; данные не меняются |
+| `preview_update` | `PUT /api/data/update` | только план; данные не меняются |
+| `preview_delete` | `DELETE /api/data/delete` | только план; данные не меняются |
+| `apply_import` | `POST /api/data/import` | внутренний; вызывается веб-сервером с confirmation token |
+| `apply_update` | `PUT /api/data/update` | внутренний; вызывается веб-сервером с confirmation token |
+| `apply_delete` | `DELETE /api/data/delete` | внутренний; вызывается веб-сервером с confirmation token |
 
 ## Ограничения API
 
@@ -29,9 +32,11 @@
 - `compress=true` возвращает zip, поэтому не используется.
 - Таймаут 60 секунд; документация требует не меньше 30.
 - Сервисный API (`run`, `stop`, `running`, `import-run-export`) вне задачи.
-- `mark` у `update_vertex` обязателен; тулз меняет только `mark`/`comment`.
+- `mark` у `preview_update`/`apply_update` обязателен; тулз меняет только `mark`/`comment`.
 - На текущем стенде `PUT /api/data/update` возвращает `action: updateVertice`,
-  поэтому `update_vertex` завершается ошибкой `kind="platform"`.
+  поэтому `apply_update` завершается ошибкой `kind="platform"`.
+- `apply_*` не входят в набор тулзов агента; их вызывает только веб-сервер после кнопки
+  «Подтвердить».
 
 ## Авторизация
 

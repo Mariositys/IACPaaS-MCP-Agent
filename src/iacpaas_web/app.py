@@ -12,8 +12,9 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
-from iacpaas_agent.agent import MODEL_NAME, AgentRuntime, run_agent
+from iacpaas_agent.agent import MODEL_NAME, WRITE_TOOLS, AgentRuntime, run_agent
 from iacpaas_agent.prompts import PROMPT_VERSION
+from iacpaas_mcp.config import get_apply_token
 
 from . import store
 from .markdown_render import render_markdown
@@ -65,6 +66,11 @@ class ChatRequest(BaseModel):
         return value
 
 
+class OperationRequest(BaseModel):
+    dialogue_id: str = Field(min_length=1)
+    call_id: str = Field(min_length=1)
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index() -> str:
     stamp = max((STATIC / name).stat().st_mtime for name in ("app.js", "style.css"))
@@ -89,6 +95,61 @@ async def dialogue(dialogue_id: str) -> Any:
         return JSONResponse(status_code=404, content={"error": "Чат не найден", "kind": "not_found"})
     messages = [_with_answer_html(message) for message in store.get_messages(dialogue_id)]
     return {"dialogue": current, "messages": messages}
+
+
+def _pending_preview(dialogue_id: str, call_id: str) -> dict[str, Any] | None:
+    for message in reversed(store.get_messages(dialogue_id)):
+        for call in message.get("calls") or []:
+            if call.get("call_id") != call_id:
+                continue
+            result = call.get("result")
+            if (
+                isinstance(result, dict)
+                and "operation" in result
+                and "success" not in result
+                and call.get("status", "pending") == "pending"
+            ):
+                return call
+    return None
+
+
+@app.post("/api/operations/confirm")
+async def confirm_operation(request: OperationRequest, http_request: Request) -> Any:
+    call = _pending_preview(request.dialogue_id, request.call_id)
+    if call is None:
+        return JSONResponse(status_code=404, content={"error": "Операция не найдена", "kind": "not_found"})
+    tool = call.get("tool")
+    if tool not in WRITE_TOOLS:
+        return JSONResponse(status_code=400, content={"error": "Это не preview-операция", "kind": "validation"})
+    apply_tool = tool.replace("preview_", "apply_", 1)
+    runtime = getattr(http_request.app.state, "agent_runtime", None)
+    if runtime is None:
+        return JSONResponse(status_code=503, content={"error": "MCP runtime не запущен", "kind": "platform"})
+
+    args = dict(call.get("args") or {})
+    args["confirmation_token"] = get_apply_token()
+    try:
+        result = await runtime.call_tool(apply_tool, args)
+    except Exception as exc:  # noqa: BLE001 - ошибка возвращается в UI
+        logger.exception("Ошибка подтверждения операции")
+        result = {"error": str(exc), "kind": "platform"}
+    failed = isinstance(result, dict) and bool(result.get("error"))
+    store.update_call(
+        request.dialogue_id,
+        request.call_id,
+        status="failed" if failed else "confirmed",
+        operation_result=result,
+    )
+    return {"ok": not failed, "result": result}
+
+
+@app.post("/api/operations/cancel")
+async def cancel_operation(request: OperationRequest) -> Any:
+    call = _pending_preview(request.dialogue_id, request.call_id)
+    if call is None:
+        return JSONResponse(status_code=404, content={"error": "Операция не найдена", "kind": "not_found"})
+    store.update_call(request.dialogue_id, request.call_id, status="cancelled")
+    return {"ok": True}
 
 
 def _chat_error(exc: Exception) -> dict[str, Any]:
@@ -135,6 +196,7 @@ async def chat_stream(request: ChatRequest, http_request: Request) -> StreamingR
                 result = await run_agent(
                     request.question,
                     read_only=False,
+                    allow_preview=True,
                     history=history,
                     runtime=runtime,
                     on_event=emit,
@@ -174,7 +236,13 @@ async def chat(request: ChatRequest, http_request: Request) -> Any:
         dialogue_id = request.dialogue_id
         history = store.get_messages(dialogue_id) if dialogue_id and store.get_dialogue(dialogue_id) else []
         runtime = getattr(http_request.app.state, "agent_runtime", None)
-        result = await run_agent(request.question, read_only=False, history=history, runtime=runtime)
+        result = await run_agent(
+            request.question,
+            read_only=False,
+            allow_preview=True,
+            history=history,
+            runtime=runtime,
+        )
         result = _with_answer_html(result)
         result["dialogue_id"] = store.save_message(dialogue_id, request.question, result)
         return result

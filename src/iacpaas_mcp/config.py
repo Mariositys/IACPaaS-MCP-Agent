@@ -1,6 +1,7 @@
 """Настройки прототипа: базовый URL захардкожен, секреты из .env или окружения."""
 
 import os
+import secrets
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -19,3 +20,20 @@ CATALOG_PATH = str(_catalog if _catalog.is_absolute() else PROJECT_ROOT / _catal
 API_KEY = os.getenv("IACPAAS_API_KEY")
 USERNAME = os.getenv("IACPAAS_USERNAME")
 PASSWORD = os.getenv("IACPAAS_PASSWORD")
+
+APPLY_TOKEN_PATH = PROJECT_ROOT / "data" / "apply.token"
+_APPLY_TOKEN = os.getenv("IACPAAS_CONFIRM_TOKEN", "").strip()
+
+
+def get_apply_token() -> str:
+    """Одноразовый локальный секрет для внутреннего apply-тулза."""
+    global _APPLY_TOKEN
+    if _APPLY_TOKEN:
+        return _APPLY_TOKEN
+    APPLY_TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
+    if APPLY_TOKEN_PATH.exists():
+        _APPLY_TOKEN = APPLY_TOKEN_PATH.read_text(encoding="utf-8").strip()
+    else:
+        _APPLY_TOKEN = secrets.token_urlsafe(32)
+        APPLY_TOKEN_PATH.write_text(_APPLY_TOKEN, encoding="utf-8")
+    return _APPLY_TOKEN

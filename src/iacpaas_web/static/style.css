@@ -225,6 +225,32 @@ button { font: inherit; cursor: pointer; }
 }
 .markdown pre code { padding: 0; background: transparent; font-size: inherit; }
 .markdown del { color: var(--muted); }
+.operation-card {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid rgba(244, 162, 97, .35);
+  border-radius: 9px;
+  background: rgba(244, 162, 97, .06);
+}
+.operation-title { margin-bottom: 7px; font-weight: 600; color: #f4a261; }
+.operation-row { display: flex; gap: 10px; margin-top: 4px; font-size: 12px; }
+.operation-key { flex: 0 0 88px; color: var(--muted); }
+.operation-value { flex: 1; min-width: 0; word-break: break-word; white-space: pre-wrap; }
+.operation-actions { display: flex; gap: 8px; margin-top: 10px; }
+.operation-button {
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+}
+.operation-button.confirm { border-color: var(--accent); background: var(--accent); color: #fff; }
+.operation-button.cancel { color: var(--muted); }
+.operation-button:disabled { opacity: .5; cursor: default; }
+.operation-status { margin-top: 8px; font-size: 12px; color: var(--muted); }
+.operation-status.success { color: #6fcf97; }
+.operation-status.error { color: #ef8b8b; }
+.operation-status.muted { color: var(--muted); }
 .loading-status { color: var(--gray); font-size: 13px; }
 .bubble-head { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
 .badge { font-size: 11px; font-weight: 600; border-radius: 999px; padding: 3px 8px; }

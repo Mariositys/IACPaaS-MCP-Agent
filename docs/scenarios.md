@@ -12,7 +12,7 @@ uv run iacpaas-mcp
 ```
 
 Ожидается: версия `0.1.0`, сервер стартует в stdio. В MCP Inspector видно
-11 тулзов, у write-тулзов есть `confirm`.
+14 тулзов: preview-тулзы и внутренние apply-тулзы.
 
 ## 2. Чтение ИР
 
@@ -39,11 +39,11 @@ uv run iacpaas-mcp
 
 ## 5. Запись без подтверждения
 
-Вызвать `import_inforesource`, `update_vertex` или `delete_inforesource` с `confirm=false`.
+Вызвать `preview_import`, `preview_update` или `preview_delete`.
 
 Ожидается: `OperationPreview` с `operation`, `path`, `details`; платформа не вызывается.
-С `confirm=true` и `IACPAAS_ALLOW_WRITE=false` - `kind="auth"`.
-Сейчас `update_vertex` на стенде возвращает `kind="platform"`: `/api/data/update`
+Вызов `apply_*` без внутреннего confirmation token возвращает `kind="auth"`.
+Сейчас `apply_update` на стенде возвращает `kind="platform"`: `/api/data/update`
 отклоняет `action: updateVertice`.
 
 ## 6. Агент: ответ по данным
@@ -82,18 +82,22 @@ uv run iacpaas-agent "Сколько вершин в ИР «<ресурс>»?"
 Один и тот же вопрос можно прогнать в CLI (сценарий 6) и в VS Code, чтобы сравнить
 поведение standalone- и IDE-режимов.
 
-Доступны 7 read-only тулзов (включая `list_inforesources`, `locate_vertex` и
-`get_terminal_values`), `validate_answer` и 3 write-тулза. После чтения агент обязан вызвать `validate_answer` с `AgentAnswer`,
+Веб-агенту доступны 7 read-only тулзов (включая `list_inforesources`, `locate_vertex` и
+`get_terminal_values`), `validate_answer` и 3 preview-тулза; apply-тулзы вызывает только
+веб-сервер. CLI и VS Code получают только read-only тулзы.
+После чтения агент обязан вызвать `validate_answer` с `AgentAnswer`,
 где каждый claim ссылается на
 `call_id` из результата и JSON Pointer. При `ok=false` агент исправляет ответ и
 повторяет. Модель может пропустить вызов: нативный custom agent не принуждает к нему.
 
-Для записи: попросить изменить данные, получить план `confirm=false`, подтвердить,
-затем агент вызывает `confirm=true`. Мутация проходит только при
+Для записи: попросить изменить данные, получить план через preview, подтвердить
+кнопкой в веб-чате. План показывается карточкой с параметрами и кнопками
+«Подтвердить»/«Отменить»; кнопки вызывают внутренний apply через веб-сервер.
+Текстовое подтверждение не выполняет операцию. Мутация проходит только при
 `IACPAAS_ALLOW_WRITE=true`; иначе возвращается `kind="auth"`.
 
 Диагностика: `uv run iacpaas-mcp --version` проверяет запуск, MCP Inspector показывает
-11 тулзов, а ошибки приходят как `ErrorResult` с `kind` (`auth`, `not_found`,
+14 тулзов, а ошибки приходят как `ErrorResult` с `kind` (`auth`, `not_found`,
 `platform`, `timeout`, `validation`). Если Copilot не видит сервер, проверьте `.vscode/mcp.json`
 и Output канала MCP/Copilot.
 
@@ -119,8 +123,8 @@ uv run iacpaas-web
 в списке. Новый чат создается при первом сообщении.
 Без ключа модели - карточка ошибки `kind="auth"`. Без ключа IACPaaS - ответ
 с ошибкой чтения, а не выдуманные данные. При `IACPAAS_ALLOW_WRITE=true` можно
-попросить изменить ИР: сначала приходит план `confirm=false`, после подтверждения
-выполняется мутация и сохраняется результат `OperationResult`.
+попросить изменить ИР: сначала приходит preview, после кнопки «Подтвердить»
+веб-сервер вызывает apply и сохраняет `OperationResult`.
 
 ## 11. Follow-up с историей
 
@@ -129,7 +133,7 @@ uv run iacpaas-web
 Ожидается: второй ответ учитывает предыдущие ходы из SQLite. Если модель ссылается
 на прошлый вызов, используется ID вида `m1_call_1`; валидатор проверяет его по
 evidence. Отказы и fail-safe в контекст не включаются; исключение - refused-ход
-с write-вызовом, нужный для подтверждения.
+с preview-вызовом, нужный для подтверждения.
 
 ## 12. Prompt caching
 

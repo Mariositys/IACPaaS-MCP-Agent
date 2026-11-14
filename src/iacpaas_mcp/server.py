@@ -14,6 +14,7 @@ update_vertex          -> PUT    /api/data/update
 delete_inforesource    -> DELETE /api/data/delete
 """
 
+import hmac
 import json
 import re
 from collections.abc import Iterator
@@ -29,7 +30,7 @@ from iacpaas_agent.validator import Verdict, validate
 
 from .catalog import list_entries, remove_entry, upsert_path
 from .client import IacpaasClient
-from .config import ALLOW_WRITE
+from .config import ALLOW_WRITE, get_apply_token
 from .graph_cache import cache
 from .models import (
     TERMINAL_TYPES,
@@ -593,31 +594,47 @@ async def validate_answer(ctx: Context, answer: AgentAnswer) -> Verdict:
     return validate(answer, evidence_store(ctx))
 
 
-# ---------- write ----------
+# ---------- preview / apply ----------
 
 
-@mcp.tool(annotations=WRITE, tags={"write"})
-async def import_inforesource(
+def _apply_blocked(token: str) -> ErrorResult | None:
+    if not hmac.compare_digest(token, get_apply_token()):
+        return ErrorResult(error="Неверный токен подтверждения", kind="auth")
+    return write_blocked()
+
+
+@mcp.tool(annotations=READ, tags={"preview"})
+async def preview_import(
     ctx: Context,
     folder: Annotated[str, Field(description="Папка-контейнер в «Мой Фонд», без имени ИР и без '<e-mail>/Мой Фонд/'")],
     resource: InfoResourceDocument,
     clear_if_exists: bool = False,
-    confirm: bool = False,
-) -> OperationResult | OperationPreview | ErrorResult:
-    """Создать ИР импортом JSON. Без confirm возвращает план операции и ничего не меняет."""
+) -> OperationPreview | ErrorResult:
+    """Подготовить импорт ИР. resource может быть минимальным корнем с successors=[]."""
     path = _join(folder, resource.title)
-    if not confirm:
-        return record_evidence(
-            ctx,
-            OperationPreview(
-                operation="import",
-                path=path,
-                details={"folder": folder, "title": resource.title, "clear_if_exists": clear_if_exists},
-            ),
-        )
-    blocked = write_blocked()
+    return record_evidence(
+        ctx,
+        OperationPreview(
+            operation="import",
+            path=path,
+            details={"folder": folder, "title": resource.title, "clear_if_exists": clear_if_exists},
+        ),
+    )
+
+
+@mcp.tool(annotations=WRITE, tags={"write", "internal"})
+async def apply_import(
+    ctx: Context,
+    folder: str,
+    resource: InfoResourceDocument,
+    confirmation_token: str,
+    clear_if_exists: bool = False,
+) -> OperationResult | ErrorResult:
+    """Выполнить ранее подготовленный импорт. Вызывается только веб-сервером."""
+    blocked = _apply_blocked(confirmation_token)
     if blocked:
         return blocked
+    path = _join(folder, resource.title)
     data = await client(ctx).import_(folder, resource.to_import_dict(), clear_if_exists)
     if isinstance(data, ErrorResult):
         return data
@@ -630,32 +647,43 @@ async def import_inforesource(
     return result
 
 
-@mcp.tool(annotations=WRITE, tags={"write"})
-async def update_vertex(
+@mcp.tool(annotations=READ, tags={"preview"})
+async def preview_update(
     ctx: Context,
     path: IrPath,
     concept_path: ConceptPath,
     metaconcept_path: MetaconceptPath,
     mark: Annotated[str, Field(description="Новая метка вершины (строкой)")],
     comment: str | None = None,
-    confirm: bool = False,
-) -> OperationResult | OperationPreview | ErrorResult:
-    """Изменить метку и/или комментарий вершины. Без confirm возвращает план операции."""
-    if not confirm:
-        return record_evidence(
-            ctx,
-            OperationPreview(
-                operation="update",
-                path=path,
-                details={
-                    "concept_path": concept_path,
-                    "metaconcept_path": metaconcept_path,
-                    "mark": mark,
-                    "comment": comment,
-                },
-            ),
-        )
-    blocked = write_blocked()
+) -> OperationPreview | ErrorResult:
+    """Подготовить изменение вершины и вернуть OperationPreview."""
+    return record_evidence(
+        ctx,
+        OperationPreview(
+            operation="update",
+            path=path,
+            details={
+                "concept_path": concept_path,
+                "metaconcept_path": metaconcept_path,
+                "mark": mark,
+                "comment": comment,
+            },
+        ),
+    )
+
+
+@mcp.tool(annotations=WRITE, tags={"write", "internal"})
+async def apply_update(
+    ctx: Context,
+    path: IrPath,
+    concept_path: ConceptPath,
+    metaconcept_path: MetaconceptPath,
+    mark: str,
+    confirmation_token: str,
+    comment: str | None = None,
+) -> OperationResult | ErrorResult:
+    """Выполнить изменение вершины. Вызывается только веб-сервером."""
+    blocked = _apply_blocked(confirmation_token)
     if blocked:
         return blocked
     data = await client(ctx).update(path, concept_path, metaconcept_path, mark, comment)
@@ -667,8 +695,8 @@ async def update_vertex(
     )
 
 
-@mcp.tool(annotations=WRITE, tags={"write"})
-async def delete_inforesource(
+@mcp.tool(annotations=READ, tags={"preview"})
+async def preview_delete(
     ctx: Context,
     path: IrPath,
     mode: Annotated[
@@ -677,24 +705,34 @@ async def delete_inforesource(
     ],
     concept_path: ConceptPath | None = None,
     metaconcept_path: MetaconceptPath | None = None,
-    confirm: bool = False,
-) -> OperationResult | OperationPreview | ErrorResult:
-    """Удалить/очистить ИР или подграф. Без confirm возвращает план операции."""
+) -> OperationPreview | ErrorResult:
+    """Подготовить удаление/очистку и вернуть OperationPreview."""
     if mode.endswith("SubGraph") and (concept_path is None or metaconcept_path is None):
         return ErrorResult(error=f"Для {mode} нужны concept_path и metaconcept_path", kind="validation")
-    if not confirm:
-        return record_evidence(
-            ctx,
-            OperationPreview(
-                operation=mode,
-                path=path,
-                details={
-                    "concept_path": concept_path,
-                    "metaconcept_path": metaconcept_path,
-                },
-            ),
-        )
-    blocked = write_blocked()
+    return record_evidence(
+        ctx,
+        OperationPreview(
+            operation=mode,
+            path=path,
+            details={
+                "concept_path": concept_path,
+                "metaconcept_path": metaconcept_path,
+            },
+        ),
+    )
+
+
+@mcp.tool(annotations=WRITE, tags={"write", "internal"})
+async def apply_delete(
+    ctx: Context,
+    path: IrPath,
+    mode: DeleteMode,
+    confirmation_token: str,
+    concept_path: ConceptPath | None = None,
+    metaconcept_path: MetaconceptPath | None = None,
+) -> OperationResult | ErrorResult:
+    """Выполнить удаление/очистку. Вызывается только веб-сервером."""
+    blocked = _apply_blocked(confirmation_token)
     if blocked:
         return blocked
     data = await client(ctx).delete(path, mode, concept_path, metaconcept_path)

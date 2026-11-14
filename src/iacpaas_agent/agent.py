@@ -32,8 +32,13 @@ REASONING_EFFORT = (os.getenv("IACPAAS_AGENT_REASONING_EFFORT", "low") or "").st
 
 MAX_STEPS = 8
 MAX_ATTEMPTS = 3
-AGENT_INTERNAL_TOOLS = {"validate_answer"}
-WRITE_TOOLS = {"import_inforesource", "update_vertex", "delete_inforesource"}
+AGENT_INTERNAL_TOOLS = {
+    "validate_answer",
+    "apply_import",
+    "apply_update",
+    "apply_delete",
+}
+WRITE_TOOLS = {"preview_import", "preview_update", "preview_delete"}
 EventCallback = Callable[[dict[str, Any]], Awaitable[None]]
 TOOL_STATUS = {
     "list_inforesources": "Ищу ресурсы в каталоге…",
@@ -43,9 +48,9 @@ TOOL_STATUS = {
     "search_vertices": "Ищу вершины…",
     "locate_vertex": "Ищу вершину и её ветку…",
     "get_terminal_values": "Собираю значения свойств…",
-    "import_inforesource": "Выполняю импорт…",
-    "update_vertex": "Выполняю изменение…",
-    "delete_inforesource": "Выполняю удаление…",
+    "preview_import": "Готовлю импорт…",
+    "preview_update": "Готовлю изменение…",
+    "preview_delete": "Готовлю удаление…",
 }
 
 CONTEXT_LIMIT_TOKENS = 1_000_000
@@ -117,11 +122,15 @@ def is_read_only(spec: Any) -> bool:
     return bool(value)
 
 
-async def load_tools(mcp_client: Client, read_only: bool = False) -> list[StructuredTool]:
+async def load_tools(
+    mcp_client: Client, read_only: bool = False, allow_preview: bool = False
+) -> list[StructuredTool]:
     """Обернуть MCP-тулзы в LangChain-тулзы, сохранив их JSON Schema."""
     tools = []
     for spec in await mcp_client.list_tools():
         if spec.name in AGENT_INTERNAL_TOOLS:
+            continue
+        if spec.name.startswith("preview_") and not allow_preview:
             continue
         if read_only and not is_read_only(spec):
             continue
@@ -149,7 +158,7 @@ class AgentRuntime:
         self._lock = asyncio.Lock()
         self._client_cm: Any = None
         self._client: Client | None = None
-        self._tools: dict[bool, list[StructuredTool]] = {}
+        self._tools: dict[tuple[bool, bool], list[StructuredTool]] = {}
 
     async def _start_locked(self) -> None:
         transport = StdioTransport(command=sys.executable, args=["-m", "iacpaas_mcp"])
@@ -175,21 +184,33 @@ class AgentRuntime:
         async with self._lock:
             await self._stop_locked()
 
-    async def tools(self, read_only: bool) -> list[StructuredTool]:
+    async def tools(self, read_only: bool, allow_preview: bool = False) -> list[StructuredTool]:
         async with self._lock:
-            cached = self._tools.get(read_only)
+            cache_key = (read_only, allow_preview)
+            cached = self._tools.get(cache_key)
             if cached is not None:
                 return cached
             if self._client is None:
                 await self._start_locked()
             try:
-                loaded = await load_tools(self._client, read_only=read_only)
+                loaded = await load_tools(
+                    self._client, read_only=read_only, allow_preview=allow_preview
+                )
             except Exception:  # noqa: BLE001 - ошибка MCP-клиента требует перезапуска
                 await self._stop_locked()
                 await self._start_locked()
-                loaded = await load_tools(self._client, read_only=read_only)
-            self._tools[read_only] = loaded
+                loaded = await load_tools(
+                    self._client, read_only=read_only, allow_preview=allow_preview
+                )
+            self._tools[cache_key] = loaded
             return loaded
+
+    async def call_tool(self, name: str, args: dict[str, Any]) -> Any:
+        """Вызвать MCP-тулз напрямую, без участия модели."""
+        async with self._lock:
+            if self._client is None:
+                await self._start_locked()
+            return unwrap(await self._client.call_tool(name, args))
 
 
 def is_anthropic_model() -> bool:
@@ -270,13 +291,16 @@ def message_block(message: dict[str, Any], index: int) -> tuple[str, dict[str, A
         if result_call_id:
             evidence[f"m{message_id}_{result_call_id}"] = result
         call_ids.append(new_id)
-        call_arguments.append(
-            {
-                "call_id": new_id,
-                "tool": call.get("tool"),
-                "args": call.get("args", {}),
-            }
-        )
+        call_info = {
+            "call_id": new_id,
+            "tool": call.get("tool"),
+            "args": call.get("args", {}),
+        }
+        if call.get("status"):
+            call_info["status"] = call["status"]
+        if call.get("operation_result") is not None:
+            call_info["operation_result"] = call["operation_result"]
+        call_arguments.append(call_info)
 
     block = "\n".join(
         [
@@ -443,7 +467,12 @@ def build_graph(model: ChatOpenAI, tools: list[StructuredTool], on_event: EventC
                 claims=[],
                 requires_confirmation=True,
             )
-            return {"answer": answer, "verdict": Verdict(ok=True, reasons=[]), "final": answer.answer}
+            return {
+                "answer": answer,
+                "verdict": Verdict(ok=True, reasons=[]),
+                "reasons": [],
+                "final": answer.answer,
+            }
 
         if state["answer"] is not None:
             verdict = state["verdict"] or Verdict(ok=False, reasons=state["reasons"])
@@ -490,6 +519,7 @@ def build_graph(model: ChatOpenAI, tools: list[StructuredTool], on_event: EventC
 async def run_agent(
     question: str,
     read_only: bool = False,
+    allow_preview: bool = False,
     history: list[dict[str, Any]] | None = None,
     runtime: AgentRuntime | None = None,
     on_event: EventCallback | None = None,
@@ -499,14 +529,16 @@ async def run_agent(
         return context_limit_result(question)
 
     if runtime is not None:
-        tools = await runtime.tools(read_only)
+        tools = await runtime.tools(read_only, allow_preview=allow_preview)
         graph = build_graph(make_model(), tools, on_event)
         state = initial_state(question, history_text, history_evidence)
         result = await graph.ainvoke(state)
     else:
         transport = StdioTransport(command=sys.executable, args=["-m", "iacpaas_mcp"])
         async with Client(transport) as mcp_client:
-            tools = await load_tools(mcp_client, read_only=read_only)
+            tools = await load_tools(
+                mcp_client, read_only=read_only, allow_preview=allow_preview
+            )
             graph = build_graph(make_model(), tools, on_event)
             state = initial_state(question, history_text, history_evidence)
             result = await graph.ainvoke(state)

@@ -188,7 +188,10 @@ function callErrorKind(data) {
 }
 
 function badge(data) {
-  if (data.answer && data.answer.requires_confirmation) return ["Нужно подтверждение", "badge-yellow"];
+  const hasPreview = operationPreviews(data.calls).length > 0;
+  if (data.answer && data.answer.requires_confirmation && hasPreview) {
+    return ["Нужно подтверждение", "badge-yellow"];
+  }
   if (data.verdict && data.verdict.ok && !(data.answer && data.answer.refused)) {
     return ["Проверено", "badge-green"];
   }
@@ -451,8 +454,146 @@ function renderClaims(claims, calls) {
   return details;
 }
 
-function renderAnswer(data, animate = false) {
-  const row = h("div", "row agent");
+function operationLabel(operation) {
+  return {
+    import: "Импорт ИР",
+    update: "Изменение вершины",
+    deleteIR: "Удаление ИР",
+    trashIR: "Перемещение ИР в корзину",
+    clearIR: "Очистка ИР",
+    deleteSubGraph: "Удаление подграфа",
+    clearSubGraph: "Очистка подграфа",
+  }[operation] || operation || "Операция";
+}
+
+function operationPreviews(calls) {
+  return (calls || []).filter((call) => {
+    const result = call.result;
+    return result && typeof result === "object" && "operation" in result && !("success" in result);
+  });
+}
+
+function operationValue(value) {
+  if (value === undefined || value === null || value === "") return "—";
+  if (typeof value === "object") return JSON.stringify(value, null, 2);
+  return String(value);
+}
+
+function updateAnswerBadge(card, state) {
+  const badge = card.closest(".bubble")?.querySelector(".bubble-head .badge");
+  if (!badge) return;
+  if (state === "confirmed") {
+    badge.className = "badge badge-green";
+    badge.textContent = "Выполнено";
+  } else if (state === "cancelled") {
+    badge.className = "badge badge-yellow";
+    badge.textContent = "Отменено";
+  } else if (state === "failed") {
+    badge.className = "badge badge-red";
+    badge.textContent = "Ошибка операции";
+  }
+}
+
+function renderOperationCard(call, data) {
+  const preview = call.result || {};
+  const details = preview.details || {};
+  const card = h("div", "operation-card");
+  card.append(h("div", "operation-title", operationLabel(preview.operation)));
+  const rows = [
+    ["Путь", preview.path],
+    ["Вершина", details.concept_path],
+    ["Метапуть", details.metaconcept_path],
+    ["Папка", details.folder],
+    ["Название", details.title],
+    ["Метка", details.mark],
+    ["Комментарий", details.comment],
+    ["Очистить", details.clear_if_exists],
+  ].filter(([, value]) => value !== undefined && value !== null && value !== "");
+  for (const [name, value] of rows) {
+    const row = h("div", "operation-row");
+    row.append(h("span", "operation-key", name));
+    row.append(h("span", "operation-value", operationValue(value)));
+    card.append(row);
+  }
+
+  const status = h("div", "operation-status");
+  const actions = h("div", "operation-actions");
+  card.append(status, actions);
+  const dialogueId = data.dialogue_id || currentDialogueId;
+
+  const finish = (state, text, kind) => {
+    call.status = state;
+    status.className = `operation-status ${kind || ""}`.trim();
+    status.textContent = text;
+    actions.replaceChildren();
+    updateAnswerBadge(card, state);
+  };
+
+  if (call.status === "confirmed") {
+    const result = call.operation_result || {};
+    finish(
+      "confirmed",
+      result.error ? `Ошибка: ${result.error}` : "Операция выполнена.",
+      result.error ? "error" : "success",
+    );
+    return card;
+  }
+  if (call.status === "cancelled") {
+    finish("cancelled", "Операция отменена.", "muted");
+    return card;
+  }
+  if (call.status === "failed") {
+    const result = call.operation_result || {};
+    finish("failed", `Ошибка: ${result.error || "операция не выполнена"}`, "error");
+    return card;
+  }
+
+  const run = async (action) => {
+    if (!dialogueId) {
+      status.textContent = "Не удалось определить диалог.";
+      return;
+    }
+    const buttons = actions.querySelectorAll("button");
+    buttons.forEach((button) => { button.disabled = true; });
+    status.className = "operation-status muted";
+    status.textContent = action === "confirm" ? "Выполняю…" : "Отменяю…";
+    try {
+      const response = await fetch(`/api/operations/${action}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dialogue_id: dialogueId, call_id: call.call_id }),
+      });
+      const payload = await response.json();
+      if (!response.ok || (action === "confirm" && !payload.ok)) {
+        const message = payload.error || payload.result?.error || "операция не выполнена";
+        finish("failed", `Ошибка: ${message}`, "error");
+        return;
+      }
+      if (action === "cancel") {
+        finish("cancelled", "Операция отменена.", "muted");
+      } else {
+        call.operation_result = payload.result;
+        finish("confirmed", "Операция выполнена.", "success");
+      }
+    } catch (error) {
+      status.className = "operation-status error";
+      status.textContent = `Ошибка сети: ${error.message}`;
+      updateAnswerBadge(card, "failed");
+      buttons.forEach((button) => { button.disabled = false; });
+    }
+  };
+
+  const confirm = h("button", "operation-button confirm", "Подтвердить");
+  confirm.type = "button";
+  confirm.addEventListener("click", () => run("confirm"));
+  const cancel = h("button", "operation-button cancel", "Отменить");
+  cancel.type = "button";
+  cancel.addEventListener("click", () => run("cancel"));
+  actions.append(confirm, cancel);
+  return card;
+}
+
+function renderAnswer(data, animate = false) {  const row = h("div", "row agent");
   const bubble = h("div", "bubble");
   const head = h("div", "bubble-head");
   const [label, className] = badge(data);
@@ -465,17 +606,24 @@ function renderAnswer(data, animate = false) {
   bubble.append(answerNode);
 
   const appendSources = () => {
+    for (const call of operationPreviews(data.calls)) {
+      const card = renderOperationCard(call, data);
+      bubble.append(card);
+      if (call.status && call.status !== "pending") updateAnswerBadge(card, call.status);
+    }
     if (answer.claims && answer.claims.length) {
       bubble.append(renderClaims(answer.claims, data.calls));
     }
-    if (data.verdict && !data.verdict.ok && data.verdict.reasons && data.verdict.reasons.length) {
+    const hasPreview = operationPreviews(data.calls).length > 0;
+    const hideReasons = answer.requires_confirmation && hasPreview;
+    if (data.verdict && !data.verdict.ok && data.verdict.reasons && data.verdict.reasons.length && !hideReasons) {
       const reasons = h("div", "claim");
       reasons.append(h("div", "claim-statement", "Причины отказа валидатора"));
       for (const reason of data.verdict.reasons) {
         reasons.append(h("div", "claim-meta", reason));
       }
       bubble.append(reasons);
-    } else if (data.reasons && data.reasons.length) {
+    } else if (data.reasons && data.reasons.length && !hideReasons) {
       const reasons = h("div", "claim");
       reasons.append(h("div", "claim-statement", "Почему ответ не подтверждён"));
       for (const reason of data.reasons) {

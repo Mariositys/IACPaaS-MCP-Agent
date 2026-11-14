@@ -6,6 +6,8 @@ get_inforesource       -> GET /api/data/export/user-item (полный эксп�
 get_subgraph           -> локальный кэш + страницы offset/next_offset
 count_graph            -> локальный кэш + подсчет по дереву
 query_graph            -> локальный кэш + поиск по дереву
+find_vertex            -> локальный кэш + поиск вершины и её ветки
+get_terminal_values    -> локальный кэш + плоский список терминальных значений
 validate_answer        -> локальная проверка AgentAnswer по evidence сессии
 import_inforesource    -> POST   /api/data/import
 update_vertex          -> PUT    /api/data/update
@@ -29,6 +31,7 @@ from .client import IacpaasClient
 from .config import ALLOW_WRITE
 from .graph_cache import cache
 from .models import (
+    TERMINAL_TYPES,
     CatalogListing,
     ConceptPath,
     DeleteMode,
@@ -46,6 +49,8 @@ from .models import (
     OperationResult,
     QueryResult,
     Subgraph,
+    TerminalValue,
+    TerminalValues,
     VertexLookup,
     VertexMatch,
 )
@@ -82,6 +87,7 @@ def write_blocked() -> ErrorResult | None:
 
 
 MAX_EVIDENCE = 50
+MAX_FIND_CHILDREN = 100
 
 
 def evidence_store(ctx: Context) -> dict[str, Any]:
@@ -154,16 +160,57 @@ def walk_limited(
         )
 
 
+def walk_with_ancestors(
+    vertex: dict[str, Any],
+    concept_path: str = "",
+    metaconcept_path: str = "",
+    depth: int = 0,
+    limit_depth: int | None = None,
+    ancestors: tuple[str, ...] = (),
+) -> Iterator[tuple[dict[str, Any], str, str, int, tuple[str, ...]]]:
+    """Обход с ограничением глубины и цепочкой именованных предков."""
+    yield vertex, concept_path, metaconcept_path, depth, ancestors
+    if limit_depth is not None and depth >= limit_depth:
+        return
+    label = str(vertex.get("name", vertex.get("value", "")))
+    for child in vertex.get("successors", []):
+        yield from walk_with_ancestors(
+            child,
+            _join(concept_path, _segment(child)),
+            _join(metaconcept_path, child.get("meta", "")),
+            depth + 1,
+            limit_depth,
+            ancestors + (label,),
+        )
+
+
+def find_root(
+    doc: dict[str, Any], target: str
+) -> tuple[dict[str, Any], str, str, int] | None:
+    for vertex, concept_path, metaconcept_path, depth in walk(doc):
+        if concept_path == target:
+            return vertex, concept_path, metaconcept_path, depth
+    return None
+
+
 def to_node(
     vertex: dict[str, Any],
     concept_path: str,
     metaconcept_path: str,
     depth: int,
-    view: Literal["summary", "full"] = "full",
+    view: Literal["compact", "summary", "full"] = "full",
 ) -> GraphNode:
+    label = vertex.get("name", vertex.get("value", ""))
+    if view == "compact":
+        return GraphNode(
+            label=label,
+            type=vertex["type"],
+            meta=vertex.get("meta"),
+            concept_path=concept_path,
+        )
     if view == "summary":
         return GraphNode(
-            label=vertex.get("name", vertex.get("value", "")),
+            label=label,
             type=vertex["type"],
             meta=vertex.get("meta"),
             concept_path=concept_path,
@@ -172,7 +219,7 @@ def to_node(
         )
     return GraphNode(
         id=vertex.get("id"),
-        label=vertex.get("name", vertex.get("value", "")),
+        label=label,
         type=vertex["type"],
         valtype=vertex.get("valtype"),
         meta=vertex.get("meta"),
@@ -229,7 +276,7 @@ async def get_subgraph(
     depth: Depth = 2,
     limit: Limit = 100,
     offset: Offset = 0,
-    view: Literal["summary", "full"] = "summary",
+    view: Literal["compact", "summary", "full"] = "summary",
     refresh: bool = False,
 ) -> Subgraph | ErrorResult:
     """Постранично получить подграф ИР из локального кэша."""
@@ -238,11 +285,7 @@ async def get_subgraph(
         return doc
 
     target = _norm(start)
-    root: tuple[dict[str, Any], str, str, int] | None = None
-    for vertex, cp, mp, d in walk(doc):
-        if cp == target:
-            root = (vertex, cp, mp, d)
-            break
+    root = find_root(doc, target)
     if root is None:
         return ErrorResult(error=f"Вершина '{start}' не найдена в ИР '{path}'", kind="not_found")
 
@@ -324,6 +367,7 @@ async def query_graph(
     start: ConceptPath = "",
     limit: Limit = 50,
     offset: Offset = 0,
+    view: Literal["compact", "summary", "full"] = "compact",
     refresh: bool = False,
 ) -> QueryResult | ErrorResult:
     """Найти вершины по имени/значению (find_by_label) или по метке метавершины (find_by_meta)."""
@@ -331,11 +375,7 @@ async def query_graph(
     if isinstance(doc, ErrorResult):
         return doc
     target = _norm(start)
-    root: tuple[dict[str, Any], str, str, int] | None = None
-    for vertex, cp, mp, d in walk(doc):
-        if cp == target:
-            root = (vertex, cp, mp, d)
-            break
+    root = find_root(doc, target)
     if root is None:
         return ErrorResult(error=f"Вершина '{start}' не найдена в ИР '{path}'", kind="not_found")
     needle = text.casefold()
@@ -344,7 +384,7 @@ async def query_graph(
         field = vertex.get("meta", "") if query == "find_by_meta" else vertex.get("name", vertex.get("value", ""))
         hay = str(field).casefold()
         if (hay == needle) if exact else (needle in hay):
-            matches.append(to_node(vertex, cp, mp, d))
+            matches.append(to_node(vertex, cp, mp, d, view))
     page = matches[offset : offset + limit]
     has_more = offset + len(page) < len(matches)
     return record_evidence(
@@ -352,6 +392,7 @@ async def query_graph(
         QueryResult(
             path=path,
             query=query,
+            view=view,
             matches=page,
             total=len(matches),
             offset=offset,
@@ -367,18 +408,29 @@ async def find_vertex(
     ctx: Context,
     path: IrPath,
     text: Annotated[str, Field(min_length=1, max_length=200, description="Подстрока названия, значения, меты или комментария")],
-    limit: Annotated[int, Field(ge=1, le=50, description="Максимум совпадений")] = 10,
+    limit: Annotated[int, Field(ge=1, le=50, description="Максимум совпадений")] = 5,
+    start: ConceptPath = "",
+    depth: Depth = 2,
+    view: Literal["compact", "summary", "full"] = "compact",
 ) -> VertexLookup | ErrorResult:
-    """Найти вершину и сразу вернуть путь, свойства и ближайших детей. Для точечного вопроса предпочтительнее query_graph + get_subgraph."""
+    """Найти вершину и сразу вернуть её path и потомков до depth.
+
+    Используйте найденный path как start для get_subgraph или get_terminal_values.
+    """
     if not text.strip():
         return ErrorResult(error="Пустой поисковый запрос", kind="validation")
     doc = await cache.load(client(ctx), path)
     if isinstance(doc, ErrorResult):
         return doc
 
+    target = _norm(start)
+    root = find_root(doc, target)
+    if root is None:
+        return ErrorResult(error=f"Вершина '{start}' не найдена в ИР '{path}'", kind="not_found")
+
     needle = text.strip().casefold()
     candidates: list[tuple[int, int, dict[str, Any], str, str, int, str]] = []
-    for vertex, cp, mp, d in walk(doc):
+    for vertex, cp, mp, d in walk(root[0], root[1], root[2], 0):
         raw_label = vertex.get("name", vertex.get("value", ""))
         label = "" if raw_label is None else str(raw_label)
         raw_meta = vertex.get("meta")
@@ -398,16 +450,22 @@ async def find_vertex(
     total = len(candidates)
     matches: list[VertexMatch] = []
     for _, _, vertex, cp, mp, d, field in candidates[:limit]:
-        children = [
-            to_node(child, _join(cp, _segment(child)), _join(mp, child.get("meta", "")), d + 1, "summary")
-            for child in vertex.get("successors", [])[:20]
-        ]
+        children: list[GraphNode] = []
+        truncated = False
+        descendants = walk_limited(vertex, cp, mp, 0, depth)
+        next(descendants, None)
+        for child, child_path, child_meta_path, child_depth in descendants:
+            if len(children) >= MAX_FIND_CHILDREN:
+                truncated = True
+                break
+            children.append(to_node(child, child_path, child_meta_path, child_depth, view))
         matches.append(
             VertexMatch(
                 field=field,
-                node=to_node(vertex, cp, mp, d, "full"),
+                path=cp,
+                node=to_node(vertex, cp, mp, d, view),
                 children=children,
-                children_truncated=len(vertex.get("successors", [])) > 20,
+                children_truncated=truncated,
             )
         )
 
@@ -419,6 +477,71 @@ async def find_vertex(
             matches=matches,
             total=total,
             truncated=total > limit,
+        ),
+    )
+
+
+@mcp.tool(annotations=READ, tags={"read"})
+async def get_terminal_values(
+    ctx: Context,
+    path: IrPath,
+    start: ConceptPath = "",
+    depth: Depth = 4,
+    limit: Limit = 100,
+    offset: Offset = 0,
+    refresh: bool = False,
+) -> TerminalValues | ErrorResult:
+    """Плоский список терминальных значений поддерева: свойство, значение, метапонятие, path."""
+    doc = await cache.load(client(ctx), path, refresh=refresh)
+    if isinstance(doc, ErrorResult):
+        return doc
+
+    target = _norm(start)
+    root = find_root(doc, target)
+    if root is None:
+        return ErrorResult(error=f"Вершина '{start}' не найдена в ИР '{path}'", kind="not_found")
+
+    values: list[TerminalValue] = []
+    for vertex, cp, _mp, d, ancestors in walk_with_ancestors(
+        root[0], root[1], root[2], 0, depth
+    ):
+        if vertex.get("type") not in TERMINAL_TYPES:
+            continue
+        raw_value = vertex.get("value")
+        if raw_value is None:
+            raw_value = vertex.get("name")
+        if raw_value is None:
+            continue
+        raw_meta = vertex.get("meta")
+        chain = [label for label in ancestors[1:] if label and not label.isdigit()]
+        values.append(
+            TerminalValue(
+                property=" / ".join(chain)
+                or ancestors[0]
+                or target
+                or str(vertex.get("name", raw_value)),
+                value=raw_value,
+                meta=None if raw_meta is None else str(raw_meta),
+                concept_path=cp,
+                depth=d,
+            )
+        )
+
+    total = len(values)
+    page = values[offset : offset + limit]
+    has_more = offset + len(page) < total
+    return record_evidence(
+        ctx,
+        TerminalValues(
+            path=path,
+            start=target,
+            depth=depth,
+            values=page,
+            total=total,
+            offset=offset,
+            has_more=has_more,
+            next_offset=offset + limit if has_more else None,
+            truncated=has_more,
         ),
     )
 

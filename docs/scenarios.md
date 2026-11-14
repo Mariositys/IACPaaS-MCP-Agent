@@ -12,7 +12,7 @@ uv run iacpaas-mcp
 ```
 
 Ожидается: версия `0.1.0`, сервер стартует в stdio. В MCP Inspector видно
-10 тулзов, у write-тулзов есть `confirm`.
+11 тулзов, у write-тулзов есть `confirm`.
 
 ## 2. Чтение ИР
 
@@ -21,13 +21,15 @@ uv run iacpaas-mcp
 Ожидается: `InfoResourceDocument` с `title`, `path`, `ontology` и корнем.
 Неверный путь - `kind="not_found"`.
 
-## 3. Подграф, подсчет и поиск
+## 3. Подграф, значения и поиск
 
-Вызвать `get_subgraph` с `path`, `start` и `depth=2`; затем `count_graph` и
-`query_graph` с тем же путем.
+Вызвать `get_subgraph` с `path`, `start` и `depth=2`; затем `find_vertex`,
+`get_terminal_values` от найденного `path`, `count_graph` и `query_graph`.
 
 Ожидается: у вершин канонический `concept_path`; `Subgraph.path` и `QueryResult.path`
-содержат путь ИР; при превышении `limit` стоит `truncated=true`.
+содержат путь ИР; при превышении `limit` стоит `truncated=true`. `find_vertex` отдаёт
+явный `path`, а `get_terminal_values` — плоский список «свойство → значение» за один
+вызов. Компактный `query_graph` содержит только `label`, `type`, `meta`, `concept_path`.
 
 ## 4. Несуществующая вершина
 
@@ -74,13 +76,14 @@ uv run iacpaas-agent "Сколько вершин в ИР «<ресурс>»?"
 - «Найди ресурс «<ресурс>»» - вызов `list_inforesources`.
 - «Сколько вершин в ИР «<ресурс>»?» - вызов `count_graph`.
 - «Найди вершину «<вершина>» в ИР «<ресурс>»» - вызов `find_vertex`.
+- «Какие значения у состава «<вершина>»?» - `find_vertex`, затем `get_terminal_values`.
 - «Покажи подграф ИР «<ресурс>» от вершины «<вершина>» глубиной 2» - вызов `get_subgraph`.
 
 Один и тот же вопрос можно прогнать в CLI (сценарий 6) и в VS Code, чтобы сравнить
 поведение standalone- и IDE-режимов.
 
-Доступны 6 read-only тулзов (включая `list_inforesources` и `find_vertex`),
-`validate_answer` и 3 write-тулза. После чтения агент обязан вызвать `validate_answer` с `AgentAnswer`,
+Доступны 7 read-only тулзов (включая `list_inforesources`, `find_vertex` и
+`get_terminal_values`), `validate_answer` и 3 write-тулза. После чтения агент обязан вызвать `validate_answer` с `AgentAnswer`,
 где каждый claim ссылается на
 `call_id` из результата и JSON Pointer. При `ok=false` агент исправляет ответ и
 повторяет. Модель может пропустить вызов: нативный custom agent не принуждает к нему.
@@ -90,7 +93,7 @@ uv run iacpaas-agent "Сколько вершин в ИР «<ресурс>»?"
 `IACPAAS_ALLOW_WRITE=true`; иначе возвращается `kind="auth"`.
 
 Диагностика: `uv run iacpaas-mcp --version` проверяет запуск, MCP Inspector показывает
-10 тулзов, а ошибки приходят как `ErrorResult` с `kind` (`auth`, `not_found`,
+11 тулзов, а ошибки приходят как `ErrorResult` с `kind` (`auth`, `not_found`,
 `platform`, `timeout`, `validation`). Если Copilot не видит сервер, проверьте `.vscode/mcp.json`
 и Output канала MCP/Copilot.
 

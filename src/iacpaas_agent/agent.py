@@ -41,6 +41,8 @@ TOOL_STATUS = {
     "get_subgraph": "Строю подграф…",
     "count_graph": "Считаю вершины и дуги…",
     "query_graph": "Ищу вершины…",
+    "find_vertex": "Ищу вершину и её ветку…",
+    "get_terminal_values": "Собираю значения свойств…",
     "import_inforesource": "Выполняю импорт…",
     "update_vertex": "Выполняю изменение…",
     "delete_inforesource": "Выполняю удаление…",

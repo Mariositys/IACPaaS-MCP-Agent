@@ -154,6 +154,10 @@ function sourceLabel(pointer) {
     metaconcept_path: "Путь метапонятия",
     depth: "Глубина",
     meta: "Метапонятие",
+    property: "Свойство",
+    value: "Значение",
+    values: "Значения",
+    view: "Режим",
     path: "Путь ИР",
     total: "Всего совпадений",
     total_matches: "Всего совпадений",
@@ -177,6 +181,7 @@ function sourceLabel(pointer) {
 function sourceGroup(pointer) {
   const value = String(pointer || "");
   if (value.startsWith("/matches/")) return "Вершина";
+  if (value.startsWith("/values/")) return "Значения";
   if (value.startsWith("/resources/")) return "Ресурсы";
   if (/^\/(path|total|truncated)$/.test(value)) return "Результат поиска";
   if (/^\/(nodes|edges|start)$/.test(value)) return "Результат подсчёта";
@@ -188,9 +193,7 @@ function sourceValue(value) {
   if (value === false) return "нет";
   if (value === null || value === undefined) return "—";
   if (typeof value === "number") {
-    return Number.isInteger(value)
-      ? String(value)
-      : value.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
+    return String(value).replace(".", ",");
   }
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);

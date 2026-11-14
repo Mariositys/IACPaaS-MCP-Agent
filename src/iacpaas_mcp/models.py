@@ -126,8 +126,10 @@ class GraphNode(BaseModel):
     meta: str | None = None
     comment: str | None = None
     concept_path: str = Field(description="Путь к вершине внутри ИР; нужен для update/delete")
-    metaconcept_path: str = Field(description="Путь по меткам метавершин; нужен для update/delete")
-    depth: int = Field(description="Расстояние от начальной вершины запроса")
+    metaconcept_path: str | None = Field(
+        None, description="Путь по меткам метавершин; нужен для update/delete"
+    )
+    depth: int | None = Field(None, description="Расстояние от начальной вершины запроса")
     link: str | None = Field(None, description="Куда ведет ссылка, если вершина - ссылка")
     original: str | None = Field(None, description="Оригинал, если вершина - зависимый клон")
 
@@ -146,7 +148,7 @@ class Subgraph(BaseModel):
     path: str
     start: str = Field(description="concept_path начальной вершины ('' - корень ИР)")
     depth: int | None
-    view: Literal["summary", "full"] = Field("summary", description="Режим вывода")
+    view: Literal["compact", "summary", "full"] = Field("summary", description="Режим вывода")
     nodes: list[GraphNode]
     edges: list[GraphEdge]
     offset: int = Field(0, description="Смещение текущей страницы")
@@ -168,6 +170,7 @@ class GraphCounts(BaseModel):
 class QueryResult(BaseModel):
     path: str = Field(description="Путь к ИР, к которому относится результат")
     query: str
+    view: Literal["compact", "summary", "full"] = Field("compact", description="Режим вывода")
     matches: list[GraphNode]
     total: int
     offset: int = 0
@@ -179,8 +182,12 @@ class QueryResult(BaseModel):
 
 class VertexMatch(BaseModel):
     field: str = Field(description="Где найдено совпадение: label, meta или comment")
+    path: str = Field(description="concept_path найденной вершины; передайте его в get_subgraph")
     node: GraphNode
-    children: list[GraphNode]
+    children: list[GraphNode] = Field(
+        default_factory=list,
+        description="Потомки найденной вершины до запрошенной глубины",
+    )
     children_truncated: bool = False
 
 
@@ -189,6 +196,27 @@ class VertexLookup(BaseModel):
     text: str
     matches: list[VertexMatch]
     total: int
+    truncated: bool = False
+    call_id: str = Field("", description="ID вызова для validate_answer")
+
+
+class TerminalValue(BaseModel):
+    property: str = Field(description="Смысловая цепочка родителей терминала без служебных номеров")
+    value: VertexValue = Field(description="Имя или значение терминала")
+    meta: str | None = Field(None, description="Метапонятие терминала")
+    concept_path: str = Field(description="Путь к терминалу внутри ИР")
+    depth: int = Field(description="Расстояние от начальной вершины запроса")
+
+
+class TerminalValues(BaseModel):
+    path: str
+    start: str = Field(description="concept_path начальной вершины ('' - корень ИР)")
+    depth: int
+    values: list[TerminalValue]
+    total: int = 0
+    offset: int = Field(0, description="Смещение текущей страницы")
+    has_more: bool = False
+    next_offset: int | None = None
     truncated: bool = False
     call_id: str = Field("", description="ID вызова для validate_answer")
 

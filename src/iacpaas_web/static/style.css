@@ -332,6 +332,7 @@ input::placeholder, textarea::placeholder { color: #868d98; }
   border-radius: 50%;
   background: var(--accent);
   color: #fff;
+  cursor: pointer;
 }
 
 #send .icon {
@@ -341,7 +342,16 @@ input::placeholder, textarea::placeholder { color: #868d98; }
   -webkit-mask: url("/static/send.svg") center / contain no-repeat;
   mask: url("/static/send.svg") center / contain no-repeat;
 }
+#send.stop .icon {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  background: currentColor;
+  -webkit-mask: none;
+  mask: none;
+}
 #send:disabled { opacity: .55; cursor: default; }
+.stopped-text { color: var(--muted); }
 .error-bubble { border-color: #5c2630; background: #1a0e12; }
 
 .spinner {

@@ -10,6 +10,7 @@ const newChat = document.getElementById("new-chat");
 const callRegistry = new Map();
 let currentDialogueId = null;
 let sending = false;
+let abortController = null;
 
 function h(tag, className, text) {
   const node = document.createElement(tag);
@@ -76,7 +77,22 @@ function syncComposerSpace() {
 }
 
 function updateSendState() {
-  send.disabled = sending || !input.value.trim();
+  if (sending) {
+    send.disabled = false;
+    send.classList.add("stop");
+    send.title = "Остановить";
+    send.setAttribute("aria-label", "Остановить");
+    return;
+  }
+  send.classList.remove("stop");
+  send.title = "Отправить";
+  send.setAttribute("aria-label", "Отправить");
+  send.disabled = !input.value.trim();
+}
+
+function stopAgent() {
+  if (!sending || !abortController) return;
+  abortController.abort();
 }
 
 function formatDate(timestamp) {
@@ -142,6 +158,16 @@ function addError(text, kind) {
   const bubble = h("div", "bubble error-bubble");
   bubble.append(h("span", "badge badge-red", `Ошибка: ${kind || "platform"}`));
   bubble.append(h("div", "answer-text", text));
+  row.append(bubble);
+  messages.append(row);
+  hideEmpty();
+  scrollDown();
+}
+
+function addStopped() {
+  const row = h("div", "row agent");
+  const bubble = h("div", "bubble");
+  bubble.append(h("div", "answer-text stopped-text", "Выполнение остановлено."));
   row.append(bubble);
   messages.append(row);
   hideEmpty();
@@ -472,6 +498,7 @@ async function ask(question) {
   input.value = "";
   resizeInput();
   sending = true;
+  abortController = new AbortController();
   updateSendState();
   newChat.disabled = true;
   const loading = addLoading();
@@ -481,6 +508,7 @@ async function ask(question) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question, dialogue_id: currentDialogueId }),
+      signal: abortController.signal,
     });
     if (!response.ok || !response.body) {
       const raw = await response.text();
@@ -543,8 +571,13 @@ async function ask(question) {
     }
   } catch (error) {
     loading.row.remove();
-    addError(`Сеть: ${error.message}`, "platform");
+    if (error.name === "AbortError") {
+      addStopped();
+    } else {
+      addError(`Сеть: ${error.message}`, "platform");
+    }
   } finally {
+    abortController = null;
     sending = false;
     newChat.disabled = false;
     updateSendState();
@@ -564,8 +597,12 @@ async function loadHealth() {
 
 form.addEventListener("submit", (event) => {
   event.preventDefault();
+  if (sending) {
+    stopAgent();
+    return;
+  }
   const question = input.value.trim();
-  if (!question || send.disabled) return;
+  if (!question) return;
   ask(question);
 });
 

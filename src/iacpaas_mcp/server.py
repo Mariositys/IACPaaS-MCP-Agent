@@ -14,6 +14,7 @@ update_vertex          -> PUT    /api/data/update
 delete_inforesource    -> DELETE /api/data/delete
 """
 
+import json
 import re
 from collections.abc import Iterator
 from contextlib import suppress
@@ -486,62 +487,102 @@ async def get_terminal_values(
     ctx: Context,
     path: IrPath,
     start: ConceptPath = "",
+    starts: list[ConceptPath] | None = None,
     depth: Depth = 4,
     limit: Limit = 100,
     offset: Offset = 0,
+    max_chars: Annotated[int, Field(ge=1000, le=100000, description="Максимальный размер страницы в символах")] = 12000,
+    include_path: bool = False,
     refresh: bool = False,
 ) -> TerminalValues | ErrorResult:
-    """Плоский список терминальных значений поддерева: свойство, значение, метапонятие, path."""
+    """Плоский список терминалов: property, value, meta; path — только по запросу."""
     doc = await cache.load(client(ctx), path, refresh=refresh)
     if isinstance(doc, ErrorResult):
         return doc
 
-    target = _norm(start)
-    root = find_root(doc, target)
-    if root is None:
-        return ErrorResult(error=f"Вершина '{start}' не найдена в ИР '{path}'", kind="not_found")
+    targets = [_norm(item) for item in (starts or []) if item.strip()]
+    if not targets:
+        targets = [_norm(start)]
+    roots: list[tuple[dict[str, Any], str, str, int]] = []
+    for target in targets:
+        root = find_root(doc, target)
+        if root is None:
+            return ErrorResult(
+                error=f"Вершина '{target}' не найдена в ИР '{path}'", kind="not_found"
+            )
+        roots.append(root)
 
     values: list[TerminalValue] = []
-    for vertex, cp, _mp, d, ancestors in walk_with_ancestors(
-        root[0], root[1], root[2], 0, depth
-    ):
-        if vertex.get("type") not in TERMINAL_TYPES:
-            continue
-        raw_value = vertex.get("value")
-        if raw_value is None:
-            raw_value = vertex.get("name")
-        if raw_value is None:
-            continue
-        raw_meta = vertex.get("meta")
-        chain = [label for label in ancestors[1:] if label and not label.isdigit()]
-        values.append(
-            TerminalValue(
-                property=" / ".join(chain)
-                or ancestors[0]
-                or target
-                or str(vertex.get("name", raw_value)),
-                value=raw_value,
-                meta=None if raw_meta is None else str(raw_meta),
-                concept_path=cp,
-                depth=d,
+    for target, root in zip(targets, roots):
+        for vertex, cp, _mp, d, ancestors in walk_with_ancestors(
+            root[0], root[1], root[2], 0, depth
+        ):
+            if vertex.get("type") not in TERMINAL_TYPES:
+                continue
+            raw_value = vertex.get("value")
+            if raw_value is None:
+                raw_value = vertex.get("name")
+            if raw_value is None:
+                continue
+            raw_meta = vertex.get("meta")
+            chain = [label for label in ancestors[1:] if label and not label.isdigit()]
+            values.append(
+                TerminalValue(
+                    property=" / ".join(chain)
+                    or ancestors[0]
+                    or target
+                    or str(vertex.get("name", raw_value)),
+                    value=raw_value,
+                    meta=None if raw_meta is None else str(raw_meta),
+                    concept_path=cp if include_path else None,
+                    depth=d,
+                    start=target if starts else None,
+                )
             )
-        )
 
     total = len(values)
-    page = values[offset : offset + limit]
+    candidates = values[offset : offset + limit]
+    page: list[TerminalValue] = []
+    used_chars = 0
+    for item in candidates:
+        item_chars = len(json.dumps(item.model_dump(mode="json"), ensure_ascii=False))
+        if page and used_chars + item_chars > max_chars:
+            break
+        page.append(item)
+        used_chars += item_chars
+
     has_more = offset + len(page) < total
+    size_limited = has_more and len(page) < len(candidates)
+    suggested_starts: list[str] = []
+    if has_more:
+        for root in roots:
+            for child in root[0].get("successors", [])[:8]:
+                child_path = _join(root[1], _segment(child))
+                if child_path not in suggested_starts:
+                    suggested_starts.append(child_path)
+        suggested_starts = suggested_starts[:8]
+
     return record_evidence(
         ctx,
         TerminalValues(
             path=path,
-            start=target,
+            start=targets[0],
+            starts=targets if starts else None,
             depth=depth,
             values=page,
             total=total,
             offset=offset,
             has_more=has_more,
-            next_offset=offset + limit if has_more else None,
+            next_offset=offset + len(page) if has_more else None,
             truncated=has_more,
+            truncated_reason="size" if size_limited else "limit" if has_more else "none",
+            hint=(
+                "Ответ усечён. Сузьте start или передайте starts для нужных веток; "
+                "не обходите соседние компоненты отдельными get_subgraph."
+                if has_more
+                else None
+            ),
+            suggested_starts=suggested_starts,
         ),
     )
 

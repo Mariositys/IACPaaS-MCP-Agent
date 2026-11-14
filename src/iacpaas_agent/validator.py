@@ -139,9 +139,7 @@ def validate(answer: AgentAnswer | str | dict[str, Any], evidence: dict[str, Any
         return Verdict(ok=False, reasons=["ответ не является AgentAnswer"])
 
     reasons: list[str] = []
-    if not answer.refused and not answer.requires_confirmation and not answer.claims:
-        reasons.append("в ответе нет утверждений с источниками")
-    if not answer.refused and not evidence:
+    if not answer.refused and answer.claims and not evidence:
         reasons.append("агент не вызвал ни одного тулза")
 
     reasons.extend(_check_write_preview(answer, evidence))

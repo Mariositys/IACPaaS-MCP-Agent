@@ -159,6 +159,9 @@ Write-операции доступны только при `IACPAAS_ALLOW_WRITE
 можно сразу передать в `get_terminal_values` или `get_subgraph`. `search_vertices`
 по умолчанию отдаёт компактные узлы (`label`, `type`, `meta`, `concept_path`);
 параметр `by="label"` ищет по названию/значению, `by="meta"` — по мете.
+`get_terminal_values` умеет пакетный `starts=[...]`, ограничивает страницу по
+`max_chars` и при усечении возвращает `hint`/`suggested_starts`; `concept_path`
+включается только через `include_path=true`.
 `get_subgraph` по умолчанию использует `view="summary"` (без комментариев и лишних полей)
 и поддерживает страницы через `offset`/`next_offset`. Для полного описания вершины
 передайте `view="full"`. Полный экспорт ИР кэшируется в `data/graph-cache` на

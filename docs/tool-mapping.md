@@ -11,7 +11,7 @@
 | `count_graph` | локальный кэш полного экспорта | сервер, **аналога в API нет** |
 | `search_vertices` | локальный кэш полного экспорта | сервер; `by="label|meta"`, компактные узлы по умолчанию, страницы `offset`/`next_offset`, **аналога в API нет** |
 | `locate_vertex` | локальный кэш полного экспорта | сервер; поиск + явный `path` + потомки до `depth` одним вызовом |
-| `get_terminal_values` | локальный кэш полного экспорта | сервер; плоский список «свойство → значение» для поддерева, **аналога в API нет** |
+| `get_terminal_values` | локальный кэш полного экспорта | сервер; плоский список «свойство → значение», `starts=[...]`, лимит по размеру и `suggested_starts`, **аналога в API нет** |
 | `validate_answer` | — локальная проверка | сервер; сверяет `AgentAnswer` с evidence процесса по `call_id` |
 | `import_inforesource` | `POST /api/data/import` | сервер, требуется `confirm=true` |
 | `update_vertex` | `PUT /api/data/update` | сервер, требуется `confirm=true` |

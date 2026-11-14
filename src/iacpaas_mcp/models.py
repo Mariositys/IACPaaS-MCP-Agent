@@ -204,13 +204,15 @@ class TerminalValue(BaseModel):
     property: str = Field(description="Смысловая цепочка родителей терминала без служебных номеров")
     value: VertexValue = Field(description="Имя или значение терминала")
     meta: str | None = Field(None, description="Метапонятие терминала")
-    concept_path: str = Field(description="Путь к терминалу внутри ИР")
+    concept_path: str | None = Field(None, description="Путь к терминалу, если include_path=true")
     depth: int = Field(description="Расстояние от начальной вершины запроса")
+    start: str | None = Field(None, description="Начальная ветка при пакетном запросе")
 
 
 class TerminalValues(BaseModel):
     path: str
     start: str = Field(description="concept_path начальной вершины ('' - корень ИР)")
+    starts: list[str] | None = Field(None, description="Ветки пакетного запроса")
     depth: int
     values: list[TerminalValue]
     total: int = 0
@@ -218,6 +220,9 @@ class TerminalValues(BaseModel):
     has_more: bool = False
     next_offset: int | None = None
     truncated: bool = False
+    truncated_reason: Literal["none", "limit", "size"] = "none"
+    hint: str | None = None
+    suggested_starts: list[str] = Field(default_factory=list)
     call_id: str = Field("", description="ID вызова для validate_answer")
 
 

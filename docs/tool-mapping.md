@@ -16,9 +16,9 @@
 | `preview_import` | `POST /api/data/import` | только план; данные не меняются |
 | `preview_update` | `PUT /api/data/update` | только план; данные не меняются |
 | `preview_delete` | `DELETE /api/data/delete` | только план; данные не меняются |
-| `apply_import` | `POST /api/data/import` | внутренний; вызывается веб-сервером с confirmation token |
-| `apply_update` | `PUT /api/data/update` | внутренний; вызывается веб-сервером с confirmation token |
-| `apply_delete` | `DELETE /api/data/delete` | внутренний; вызывается веб-сервером с confirmation token |
+| `apply_import` | `POST /api/data/import` | внутренний; вызывается веб-сервером или CLI с confirmation token |
+| `apply_update` | `PUT /api/data/update` | внутренний; вызывается веб-сервером или CLI с confirmation token |
+| `apply_delete` | `DELETE /api/data/delete` | внутренний; вызывается веб-сервером или CLI с confirmation token |
 
 ## Ограничения API
 
@@ -35,8 +35,8 @@
 - `mark` у `preview_update`/`apply_update` обязателен; тулз меняет только `mark`/`comment`.
 - На текущем стенде `PUT /api/data/update` возвращает `action: updateVertice`,
   поэтому `apply_update` завершается ошибкой `kind="platform"`.
-- `apply_*` не входят в набор тулзов агента; их вызывает только веб-сервер после кнопки
-  «Подтвердить».
+- `apply_*` не входят в набор тулзов агента; их вызывает веб-сервер после кнопки
+  «Подтвердить» или CLI после ответа `y`.
 
 ## Авторизация
 

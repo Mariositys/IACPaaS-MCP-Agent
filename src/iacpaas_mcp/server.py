@@ -581,7 +581,7 @@ async def apply_import(
     confirmation_token: str,
     clear_if_exists: bool = False,
 ) -> OperationResult | ErrorResult:
-    """Выполнить импорт; вызывается веб-сервером."""
+    """Выполнить импорт; вызывается веб-сервером или CLI."""
     blocked = _apply_blocked(confirmation_token)
     if blocked:
         return blocked
@@ -633,7 +633,7 @@ async def apply_update(
     confirmation_token: str,
     comment: str | None = None,
 ) -> OperationResult | ErrorResult:
-    """Выполнить изменение вершины; вызывается веб-сервером."""
+    """Выполнить изменение вершины; вызывается веб-сервером или CLI."""
     blocked = _apply_blocked(confirmation_token)
     if blocked:
         return blocked
@@ -682,7 +682,7 @@ async def apply_delete(
     concept_path: ConceptPath | None = None,
     metaconcept_path: MetaconceptPath | None = None,
 ) -> OperationResult | ErrorResult:
-    """Выполнить удаление или очистку; вызывается веб-сервером."""
+    """Выполнить удаление или очистку; вызывается веб-сервером или CLI."""
     blocked = _apply_blocked(confirmation_token)
     if blocked:
         return blocked

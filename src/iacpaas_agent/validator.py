@@ -85,6 +85,10 @@ def _check_write_preview(answer: AgentAnswer, evidence: dict[str, Any]) -> list[
     return []
 
 
+def is_truncated(value: Any) -> bool:
+    return isinstance(value, dict) and bool(value.get("has_more") or value.get("truncated"))
+
+
 def _check_claim(claim: Claim, evidence: dict[str, Any]) -> list[str]:
     reasons: list[str] = []
     if claim.value is None and claim.quote is None:
@@ -117,10 +121,7 @@ def _check_claim(claim: Claim, evidence: dict[str, Any]) -> list[str]:
     if claim.quote is not None and not quote_ok:
         reasons.append(f"«{claim.statement}»: цитата не найдена в источнике")
 
-    if any(
-        isinstance(evidence.get(source.call_id), dict) and evidence[source.call_id].get("truncated")
-        for source in claim.sources
-    ):
+    if any(is_truncated(evidence.get(source.call_id)) for source in claim.sources):
         text = claim.statement.casefold()
         if any(word in text for word in ("всего", "итого", "количество", "число", "total")):
             reasons.append("данные обрезаны, нельзя утверждать общее количество")

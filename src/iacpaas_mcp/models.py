@@ -135,7 +135,6 @@ class Subgraph(BaseModel):
     total: int = Field(0, description="Всего вершин в поддереве на заданной глубине")
     has_more: bool = Field(False, description="Есть ли следующая страница")
     next_offset: int | None = Field(None, description="offset следующей страницы")
-    truncated: bool = Field(False, description="True, если показана не вся выборка")
     call_id: str = Field("", description="ID вызова для validate_answer")
 
 
@@ -156,7 +155,6 @@ class QueryResult(BaseModel):
     offset: int = 0
     has_more: bool = False
     next_offset: int | None = None
-    truncated: bool = False
     call_id: str = Field("", description="ID вызова для validate_answer")
 
 
@@ -199,7 +197,6 @@ class TerminalValues(BaseModel):
     offset: int = Field(0, description="Смещение текущей страницы")
     has_more: bool = False
     next_offset: int | None = None
-    truncated: bool = False
     truncated_reason: Literal["none", "limit", "size"] = "none"
     hint: str | None = None
     suggested_starts: list[str] = Field(default_factory=list)

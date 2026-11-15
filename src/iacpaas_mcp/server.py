@@ -287,7 +287,6 @@ async def get_subgraph(
             total=total,
             has_more=has_more,
             next_offset=offset + limit if has_more else None,
-            truncated=has_more,
         ),
     )
 
@@ -360,7 +359,6 @@ async def search_vertices(
             offset=offset,
             has_more=has_more,
             next_offset=offset + limit if has_more else None,
-            truncated=has_more,
         ),
     )
 
@@ -532,7 +530,6 @@ async def get_terminal_values(
             offset=offset,
             has_more=has_more,
             next_offset=offset + len(page) if has_more else None,
-            truncated=has_more,
             truncated_reason="size" if size_limited else "limit" if has_more else "none",
             hint=(
                 "Ответ усечён. Сузьте start или передайте starts для нужных веток; "

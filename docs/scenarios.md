@@ -27,7 +27,8 @@ uv run iacpaas-mcp
 `get_terminal_values` от найденного `path`, `count_graph` и `search_vertices`.
 
 Ожидается: у вершин канонический `concept_path`; `Subgraph.path` и `QueryResult.path`
-содержат путь ИР; при превышении `limit` стоит `truncated=true`. `locate_vertex` отдаёт
+содержат путь ИР; при превышении `limit` стоят `has_more=true` и `next_offset`,
+а у `locate_vertex` — `truncated=true`. `locate_vertex` отдаёт
 явный `path`, а `get_terminal_values` — плоский список «свойство → значение» за один
 вызов. Компактный `search_vertices` содержит только `label`, `type`, `meta`, `concept_path`.
 

@@ -100,7 +100,7 @@ button { font: inherit; cursor: pointer; }
   border-right: 1px solid var(--line);
 }
 
-.label {
+.label { 
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: .04em;

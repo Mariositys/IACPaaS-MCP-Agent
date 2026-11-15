@@ -1,5 +1,4 @@
 # Платформа отдаёт ИР только целиком, поэтому полный экспорт кэшируется на диск.
-import asyncio
 import hashlib
 import json
 import time
@@ -19,14 +18,10 @@ class GraphCache:
     def __init__(self, directory: Path = CACHE_DIR, ttl: int = CACHE_TTL):
         self.directory = directory
         self.ttl = ttl
-        self._locks: dict[str, asyncio.Lock] = {}
 
     def _file(self, path: str) -> Path:
         key = hashlib.sha256(path.casefold().encode("utf-8")).hexdigest()[:32]
         return self.directory / f"{key}.json"
-
-    def _lock(self, path: str) -> asyncio.Lock:
-        return self._locks.setdefault(path.casefold(), asyncio.Lock())
 
     def _read(self, path: str) -> dict[str, Any] | None:
         target = self._file(path)
@@ -62,7 +57,6 @@ class GraphCache:
             self._file(path).unlink()
         except FileNotFoundError:
             pass
-        self._locks.pop(path.casefold(), None)
 
     async def load(
         self,
@@ -85,21 +79,16 @@ class GraphCache:
             if cached is not None:
                 return cached["document"]
 
-        async with self._lock(path):
-            if not refresh:
-                cached = self._read(path)
-                if cached is not None:
-                    return cached["document"]
-            document = await client.export(path)
-            if isinstance(document, ErrorResult):
-                return document
-            if not isinstance(document, dict):
-                return ErrorResult(error="Ответ IACPaaS не является объектом", kind="platform")
-            try:
-                self._write(path, document)
-            except OSError:
-                pass
+        document = await client.export(path)
+        if isinstance(document, ErrorResult):
             return document
+        if not isinstance(document, dict):
+            return ErrorResult(error="Ответ IACPaaS не является объектом", kind="platform")
+        try:
+            self._write(path, document)
+        except OSError:
+            pass
+        return document
 
 
 cache = GraphCache()

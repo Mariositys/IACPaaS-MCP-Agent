@@ -252,6 +252,9 @@ function sourceLabel(pointer) {
     total: "Всего совпадений",
     total_matches: "Всего совпадений",
     truncated: "Выдача обрезана",
+    has_more: "Есть ещё данные",
+    next_offset: "Следующая страница",
+    truncated_reason: "Причина ограничения",
     nodes: "Вершин",
     edges: "Дуг",
     start: "Начальная вершина",
@@ -273,7 +276,7 @@ function sourceGroup(pointer) {
   if (value.startsWith("/matches/")) return "Вершина";
   if (value.startsWith("/values/")) return "Значения свойств";
   if (value.startsWith("/resources/")) return "Ресурсы";
-  if (/^\/(path|total|truncated)$/.test(value)) return "Результат поиска";
+  if (/^\/(path|total|truncated|has_more|next_offset)$/.test(value)) return "Результат поиска";
   if (/^\/(nodes|edges|start)$/.test(value)) return "Результат подсчёта";
   return "Данные";
 }

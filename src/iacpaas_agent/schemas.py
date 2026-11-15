@@ -1,12 +1,13 @@
-"""Контракт ответа агента: каждое утверждение обязано ссылаться на результат тулза."""
+"""Контракт ответа агента: claims содержат только прямые данные из тулзов."""
 
 from pydantic import BaseModel, Field, field_validator
 
 
 class Source(BaseModel):
+    """Ссылка на прямой узел результата тулза; вычисленные значения не допускаются."""
+
     call_id: str = Field(min_length=1, description="id вызова тулза в этом запуске")
     pointer: str = Field(description="JSON Pointer до значения в результате; '' - весь результат")
-    expr: str | None = Field(None, description="Формула для производного значения, например 'ref(...) / 2'")
 
     @field_validator("pointer")
     @classmethod
@@ -17,8 +18,10 @@ class Source(BaseModel):
 
 
 class Claim(BaseModel):
+    """Прямой факт из результата тулза; суммы, средние и другие вычисления не допускаются."""
+
     statement: str = Field(min_length=1, description="Смысл утверждения без самого значения; значение задается в value или quote")
-    value: bool | int | float | str | None = Field(None, description="Значение, если утверждение про число или строку")
+    value: bool | int | float | str | None = Field(None, description="Точное значение из источника, без агрегатов и вычислений")
     quote: str | None = Field(None, min_length=1, description="Точная цитата из источника для текстового утверждения")
     sources: list[Source] = Field(min_length=1, description="Хотя бы один источник")
 

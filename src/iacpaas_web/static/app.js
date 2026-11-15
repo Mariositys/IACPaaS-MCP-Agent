@@ -355,10 +355,82 @@ function factLabel(claim, source, call) {
   return statement.length > 90 ? `${statement.slice(0, 87)}…` : statement || label;
 }
 
-function sourceHead(tool, path = "", summary = false) {
+function argumentValue(value) {
+  if (Array.isArray(value)) return value.join(", ");
+  if (value === true) return "да";
+  if (value === false) return "нет";
+  if (value === null || value === undefined) return "";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+function toolArguments(call) {
+  const args = call?.args || {};
+  const items = [];
+  const add = (label, value) => {
+    const text = argumentValue(value);
+    if (text) items.push([label, text]);
+  };
+
+  switch (call?.tool) {
+    case "list_inforesources":
+      add("Запрос", args.query);
+      break;
+    case "get_inforesource":
+      if (args.format === "json") add("Формат", "JSON");
+      break;
+    case "get_subgraph":
+    case "count_graph":
+      add("Ветка", args.start);
+      break;
+    case "search_vertices":
+      add("Текст", args.text);
+      add("Ветка", args.start);
+      break;
+    case "locate_vertex":
+      add("Текст", args.text);
+      add("Ветка", args.start);
+      break;
+    case "get_terminal_values":
+      if (Array.isArray(args.starts) && args.starts.length) {
+        add("Ветки", args.starts);
+      } else {
+        add("Ветка", args.start);
+      }
+      break;
+    case "preview_import":
+      add("Папка", args.folder);
+      add("Название", args.resource?.title || args.resource?.name);
+      if (args.clear_if_exists) add("Очистить при наличии", "да");
+      break;
+    case "preview_update":
+      add("Вершина", args.concept_path);
+      add("Новая метка", args.mark);
+      add("Комментарий", args.comment);
+      break;
+    case "preview_delete":
+      add("Режим", operationLabel(args.mode));
+      add("Вершина", args.concept_path);
+      break;
+  }
+
+  return items;
+}
+
+function sourceHead(tool, path = "", summary = false, args = []) {
   const head = h("div", summary ? "source-head source-head-summary" : "source-head");
   head.append(h("div", "source-tool", `Вызов инструмента: ${tool || "тулз"}`));
   if (path) head.append(h("div", "source-path", path));
+  if (args.length) {
+    const list = h("div", "source-args");
+    for (const [label, value] of args) {
+      const row = h("div", "source-arg");
+      row.append(h("span", "source-arg-label", `${label}:`));
+      row.append(h("span", "source-arg-value", value));
+      list.append(row);
+    }
+    head.append(list);
+  }
   return head;
 }
 
@@ -428,7 +500,7 @@ function renderClaims(claims, calls) {
     const call = findCall(callId, calls);
     const path = call?.args?.path || call?.result?.path || "";
     const card = h("div", "source-card");
-    card.append(sourceHead(call ? call.tool : "тулз", path));
+    card.append(sourceHead(call ? call.tool : "тулз", path, false, toolArguments(call)));
 
     const groups = new Map();
     for (const entry of entries) {

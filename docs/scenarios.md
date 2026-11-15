@@ -85,8 +85,8 @@ uv run iacpaas-agent "Сколько вершин в ИР «<ресурс>»?"
 
 Веб-агенту доступны 7 read-only тулзов (включая `list_inforesources`, `locate_vertex` и
 `get_terminal_values`), `validate_answer` и 3 preview-тулза; apply-тулзы вызывает только
-веб-сервер. CLI и VS Code получают только read-only тулзы.
-После чтения агент обязан вызвать `validate_answer` с `AgentAnswer`,
+веб-сервер. CLI получает только read-only тулзы; VS Code — read-only и `validate_answer`.
+В VS Code после чтения агент должен вызвать `validate_answer` с `AgentAnswer`,
 где каждый claim ссылается на
 `call_id` из результата и JSON Pointer. При `ok=false` агент исправляет ответ и
 повторяет. Модель может пропустить вызов: нативный custom agent не принуждает к нему.
@@ -138,7 +138,7 @@ evidence. Отказы и fail-safe в контекст не включаютс�
 
 ## 12. Prompt caching
 
-Задать вопрос, затем follow-up в течение TTL кэша (5 минут для Claude, сессия для OpenAI).
+Задать вопрос, затем follow-up в течение срока кэширования выбранного провайдера.
 
 Ожидается: в `usage` Polza появляется `cached_tokens > 0`, если префикс превышает
 минимальный размер (обычно 1000+ токенов). Статический системный промпт и история

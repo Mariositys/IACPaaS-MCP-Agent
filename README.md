@@ -154,11 +154,12 @@ preview-тулзы и показывает карточку операции; ap
 нативный custom agent не гарантирует вызов: жёсткое принуждение есть только
 в режимах с completion tool.
 
-Доступны 7 read-only тулзов (включая `list_inforesources`, `locate_vertex` и
-`get_terminal_values`), `validate_answer`, 3 preview-тулза и 3 внутренних apply-тулза.
-Сначала агент ищет ресурс через `list_inforesources` по локальному `catalog.txt` и
-использует точный `path`; если ресурса нет в каталоге, чтение отклоняется.
-В VS Code и CLI preview/apply недоступны; веб-сервер вызывает apply после подтверждения.
+В VS Code доступны 7 read-only тулзов (включая `list_inforesources`, `locate_vertex`
+и `get_terminal_values`) и `validate_answer`; CLI получает только read-only тулзы.
+В веб-чате дополнительно доступны 3 preview-тулза, а apply вызывает веб-сервер
+после подтверждения. Если путь неизвестен, агент ищет ресурс через
+`list_inforesources` по локальному `catalog.txt` и использует точный `path`;
+если ресурса нет в каталоге, чтение отклоняется.
 
 Примеры запросов (подставьте ресурс из `catalog.txt` и существующую вершину):
 - «Найди ресурс «<ресурс>»» - `list_inforesources`.

@@ -1,5 +1,3 @@
-"""Безопасный рендер Markdown-ответов для веб-чата."""
-
 import re
 
 import nh3
@@ -10,7 +8,7 @@ _md = MarkdownIt("gfm-like", {"html": False, "linkify": False})
 _TABLE_SEPARATOR = re.compile(r"\|(?:\s*:?-{3,}:?\s*\|)+")
 _TABLE_HEADER = re.compile(r"(\|[^|\n]*(?:\|[^|\n]*)+\|)\s*$")
 
-# nh3 is a second line of defense: raw HTML is already disabled in MarkdownIt.
+# nh3 страхует на случай ошибки MarkdownIt.
 _ALLOWED_TAGS = {
     "a",
     "blockquote",
@@ -61,7 +59,6 @@ def _cells(row: str) -> list[str]:
 
 
 def _normalize_inline_table(line: str) -> str:
-    """Развернуть таблицу, которую модель записала одной строкой."""
     separator = _TABLE_SEPARATOR.search(line)
     if separator is None:
         return line
@@ -111,7 +108,6 @@ def _normalize_inline_table(line: str) -> str:
 
 
 def normalize_markdown(text: str) -> str:
-    """Починить типичный сбой модели: Markdown-таблица без переводов строк."""
     lines: list[str] = []
     fenced = False
     for line in text.splitlines():
@@ -127,7 +123,6 @@ def normalize_markdown(text: str) -> str:
 
 
 def render_markdown(text: str | None) -> str:
-    """Вернуть безопасный HTML для Markdown-текста ответа."""
     if not text:
         return ""
     return nh3.clean(

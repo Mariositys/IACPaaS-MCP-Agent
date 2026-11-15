@@ -1,5 +1,3 @@
-"""Запуск MCP-сервера: python -m iacpaas_mcp или iacpaas-mcp."""
-
 import argparse
 
 from . import __version__

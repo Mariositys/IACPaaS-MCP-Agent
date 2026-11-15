@@ -1,5 +1,3 @@
-"""Адаптер к API IACPaaS. Ошибки возвращаются как ErrorResult, а не исключения."""
-
 import json
 from typing import Any
 
@@ -23,34 +21,22 @@ class IacpaasClient:
             timeout=TIMEOUT,
         )
 
-    async def export(
-        self,
-        path: str,
-        json_type: str = "universal",
-        start_concept_path: str | None = None,
-        depth: int | None = None,
-        no_blob_data: bool = True,
-    ) -> dict[str, Any] | ErrorResult:
-        params = {
-            "path": path,
-            "json-type": json_type,
-            "start-target-concept-path": start_concept_path,
-            "export-depth": str(depth) if depth is not None else None,
-            "no-blob-data": no_blob_data,
-        }
+    async def export(self, path: str) -> dict[str, Any] | ErrorResult:
         data = await self._call(
-            "GET", "/api/data/export/user-item", params={k: v for k, v in params.items() if v is not None}
+            "GET",
+            "/api/data/export/user-item",
+            params={"path": path, "json-type": "universal", "no-blob-data": True},
         )
         if isinstance(data, ErrorResult):
             return data
-        # В OpenAPI ответ - object: либо сам ИР, либо обертка ExportResult с JSON-строкой
+        # Ответ бывает объектом ИР или обёрткой ExportResult.
         if "result" in data and "success" in data:
             try:
                 result = data["result"]
                 return json.loads(result) if isinstance(result, str) else result
             except (TypeError, ValueError):
                 return _err("Не удалось разобрать JSON из ответа IACPaaS", "platform")
-        # Экспорт user-item возвращает {filename, code, data}, где data - JSON-строка ИР
+        # user-item: {filename, code, data}, data - JSON-строка.
         if isinstance(data.get("data"), str):
             try:
                 return json.loads(data["data"].lstrip("\ufeff"))
@@ -116,7 +102,7 @@ class IacpaasClient:
         except ValueError:
             return _err(f"IACPaaS вернул не JSON ({url}): {resp.text[:500]}", "platform")
 
-        # Result/CodeResult: ошибка приходит с кодом 200 и success=false
+        # Ошибка может прийти с HTTP 200 и success=false.
         if isinstance(data, dict) and data.get("success") is False:
             details = data.get("explanation") or data.get("explanationSafe")
             message = f"IACPaaS ({url}): {data.get('error') or 'ошибка'}" + (f". {details}" if details else "")
@@ -129,7 +115,7 @@ class IacpaasClient:
     async def _request(self, method: str, url: str, **kwargs: Any) -> httpx2.Response:
         resp = await self._http.request(method, url, headers=await self._auth(), **kwargs)
         if resp.status_code == 401 and self._token:
-            # JWT мог истечь: один раз логинимся заново
+            # JWT мог истечь: повторяем вход один раз.
             self._token = None
             resp = await self._http.request(method, url, headers=await self._auth(), **kwargs)
         return resp

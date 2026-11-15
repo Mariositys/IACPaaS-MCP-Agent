@@ -593,7 +593,8 @@ function renderOperationCard(call, data) {
   return card;
 }
 
-function renderAnswer(data, animate = false) {  const row = h("div", "row agent");
+function renderAnswer(data, animate = false) {
+  const row = h("div", "row agent");
   const bubble = h("div", "bubble");
   const head = h("div", "bubble-head");
   const [label, className] = badge(data);

@@ -1,5 +1,3 @@
-"""Запуск браузерного чата: iacpaas-web."""
-
 import uvicorn
 
 

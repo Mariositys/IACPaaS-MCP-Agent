@@ -1,16 +1,8 @@
-"""Модели MCP: из них строятся JSON Schema входов и выходов тулзов.
-
-Сюда попадают только поля, нужные клиенту. Служебные поля IACPaaS
-(owner_id, code, original_id/link_id и т.п.) наружу не публикуются.
-"""
-
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 
 from .config import MAX_DEPTH, MAX_LIMIT
-
-# ---------- общие типы ----------
 
 VertexType = Literal["КОРЕНЬ", "НЕТЕРМИНАЛ", "ТЕРМИНАЛ-СОРТ", "ТЕРМИНАЛ-ЗНАЧЕНИЕ"]
 ValType = Literal["STRING", "INTEGER", "REAL", "BOOLEAN", "DATE", "BLOB"]
@@ -42,12 +34,7 @@ Offset = Annotated[int, Field(ge=0, le=1_000_000, description="Смещение 
 Depth = Annotated[int, Field(ge=0, le=MAX_DEPTH, description="Глубина обхода (0 - только сама вершина)")]
 
 
-# ---------- ИР в универсальном JSON-формате ----------
-
-
 class Vertex(BaseModel):
-    """Вершина (понятие) в универсальном формате. У вершины есть либо name, либо value."""
-
     model_config = ConfigDict(extra="ignore")
 
     id: int | None = Field(None, description="Идентификатор вершины (только при экспорте, при импорте игнорируется)")
@@ -94,8 +81,6 @@ def _schema_dict(vertex: dict[str, Any]) -> dict[str, Any]:
 
 
 class InfoResourceDocument(Vertex):
-    """ИР целиком в универсальном формате: сведения об ИР и корень на одном уровне."""
-
     title: str = Field(description="Имя ИР, совпадает с name корня")
     path: str = Field(description="Полный путь к ИР, оканчивается на '$;'")
     call_id: str = Field("", description="ID вызова для validate_answer")
@@ -106,16 +91,11 @@ class InfoResourceDocument(Vertex):
     creation: str | None = Field(None, description="Дата создания (только при экспорте)")
 
     def to_import_dict(self) -> dict[str, Any]:
-        """JSON для импорта в формате IACPaaS: без None, id и пустого context."""
         data = _schema_dict(self.model_dump(mode="json", exclude_none=True))
         # context есть в документации, но не в схеме: отправляем, только если он задан
         if not data.get("context"):
             data.pop("context", None)
         return data
-
-
-# ---------- граф ----------
-# Подграф, подсчет и запросы считаются локально по экспорту: отдельных методов в API нет
 
 
 class GraphNode(BaseModel):
@@ -226,9 +206,6 @@ class TerminalValues(BaseModel):
     call_id: str = Field("", description="ID вызова для validate_answer")
 
 
-# ---------- запись ----------
-
-
 class OperationResult(BaseModel):
     success: bool
     operation: str
@@ -258,7 +235,6 @@ class CatalogEntry(BaseModel):
 
 
 class CatalogListing(BaseModel):
-    source: Literal["configured_catalog"] = "configured_catalog"
     resources: list[CatalogEntry]
     total_matches: int
     truncated: bool

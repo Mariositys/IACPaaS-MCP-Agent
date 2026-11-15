@@ -1,5 +1,3 @@
-"""SQLite-хранилище диалогов: все сообщения без автоматического удаления."""
-
 import json
 import sqlite3
 import time
@@ -20,28 +18,8 @@ def connect() -> sqlite3.Connection:
     return conn
 
 
-def _tables(conn: sqlite3.Connection) -> set[str]:
-    return {row["name"] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
-
-
 def init_db() -> None:
     with closing(connect()) as conn, conn:
-        tables = _tables(conn)
-        if "sessions" in tables and "dialogues" not in tables:
-            conn.execute("ALTER TABLE sessions RENAME TO dialogues")
-        if "turns" in tables and "messages" not in tables:
-            conn.execute("ALTER TABLE turns RENAME TO messages")
-
-        tables = _tables(conn)
-        if "messages" in tables:
-            columns = {row["name"] for row in conn.execute("PRAGMA table_info(messages)")}
-            if "session_id" in columns and "dialogue_id" not in columns:
-                conn.execute("ALTER TABLE messages RENAME COLUMN session_id TO dialogue_id")
-            if "reasons" not in columns:
-                conn.execute("ALTER TABLE messages ADD COLUMN reasons TEXT NOT NULL DEFAULT '[]'")
-
-        conn.execute("DROP INDEX IF EXISTS idx_turns_session")
-        conn.execute("DROP INDEX IF EXISTS idx_sessions_updated")
         conn.executescript(
             """
             CREATE TABLE IF NOT EXISTS dialogues (
@@ -111,7 +89,6 @@ def get_messages(dialogue_id: str) -> list[dict[str, Any]]:
 
 
 def save_message(dialogue_id: str | None, question: str, result: dict[str, Any]) -> str:
-    """Сохранить сообщение; для нового диалога создать его по первому вопросу."""
     now = time.time()
     with closing(connect()) as conn, conn:
         exists = bool(dialogue_id and conn.execute("SELECT 1 FROM dialogues WHERE id = ?", (dialogue_id,)).fetchone())
@@ -145,7 +122,6 @@ def save_message(dialogue_id: str | None, question: str, result: dict[str, Any])
 
 
 def update_call(dialogue_id: str, call_id: str, **updates: Any) -> bool:
-    """Обновить служебные поля вызова в сохраненном сообщении."""
     with closing(connect()) as conn, conn:
         rows = conn.execute(
             "SELECT id, calls FROM messages WHERE dialogue_id = ? ORDER BY id DESC",

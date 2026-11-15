@@ -1,5 +1,3 @@
-"""Детерминированная проверка ответа агента по результатам вызовов тулзов."""
-
 import json
 import re
 import unicodedata
@@ -18,7 +16,6 @@ class Verdict(BaseModel):
 
 
 def resolve_pointer(data: Any, pointer: str) -> Any:
-    """Разрешить JSON Pointer. Пустая строка - весь результат."""
     if pointer == "":
         return data
     current = data
@@ -34,7 +31,6 @@ def resolve_pointer(data: Any, pointer: str) -> Any:
 
 
 def normalize_text(value: str) -> str:
-    """Привести текст к сравнимому виду без синонимов и стемминга."""
     text = unicodedata.normalize("NFKC", value)
     text = text.translate(str.maketrans({"«": '"', "»": '"', "“": '"', "”": '"', "–": "-", "—": "-", "−": "-"}))
     return " ".join(text.casefold().split())
@@ -51,13 +47,11 @@ def same_value(expected: Any, actual: Any) -> bool:
 
 
 def quote_matches(quote: str, actual: Any) -> bool:
-    """Проверить, что цитата встречается в значении по указателю."""
     haystack = actual if isinstance(actual, str) else json.dumps(actual, ensure_ascii=False, sort_keys=True)
     return normalize_text(quote) in normalize_text(haystack)
 
 
 def validate(answer: AgentAnswer | str | dict[str, Any], evidence: dict[str, Any]) -> Verdict:
-    """Проверить ответ по накопленным результатам тулзов."""
     if isinstance(answer, str):
         try:
             answer = json.loads(answer)

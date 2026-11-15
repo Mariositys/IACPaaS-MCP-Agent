@@ -1,5 +1,3 @@
-"""Настройки прототипа: базовый URL захардкожен, секреты из .env или окружения."""
-
 import os
 import secrets
 from pathlib import Path
@@ -26,7 +24,6 @@ _APPLY_TOKEN = os.getenv("IACPAAS_CONFIRM_TOKEN", "").strip()
 
 
 def get_apply_token() -> str:
-    """Одноразовый локальный секрет для внутреннего apply-тулза."""
     global _APPLY_TOKEN
     if _APPLY_TOKEN:
         return _APPLY_TOKEN

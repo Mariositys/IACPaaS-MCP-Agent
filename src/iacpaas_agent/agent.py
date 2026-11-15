@@ -1,5 +1,3 @@
-"""Цикл агента: сбор данных через MCP, структурированный ответ, проверка и repair."""
-
 import asyncio
 import json
 import os
@@ -99,7 +97,6 @@ def make_model() -> ChatOpenAI:
 
 
 def unwrap(result: Any) -> Any:
-    """Достать результат тулза из CallToolResult FastMCP."""
     data = result.structured_content
     if isinstance(data, dict) and "result" in data:
         return data["result"]
@@ -125,7 +122,6 @@ def is_read_only(spec: Any) -> bool:
 async def load_tools(
     mcp_client: Client, read_only: bool = False, allow_preview: bool = False
 ) -> list[StructuredTool]:
-    """Обернуть MCP-тулзы в LangChain-тулзы, сохранив их JSON Schema."""
     tools = []
     for spec in await mcp_client.list_tools():
         if spec.name in AGENT_INTERNAL_TOOLS:
@@ -152,8 +148,6 @@ async def load_tools(
 
 
 class AgentRuntime:
-    """Долгоживущий MCP-клиент и кэш тулзов для веб-чата."""
-
     def __init__(self) -> None:
         self._lock = asyncio.Lock()
         self._client_cm: Any = None
@@ -206,7 +200,6 @@ class AgentRuntime:
             return loaded
 
     async def call_tool(self, name: str, args: dict[str, Any]) -> Any:
-        """Вызвать MCP-тулз напрямую, без участия модели."""
         async with self._lock:
             if self._client is None:
                 await self._start_locked()
@@ -219,7 +212,6 @@ def is_anthropic_model() -> bool:
 
 
 def system_message(prompt: str, history: str = "") -> SystemMessage:
-    """Стабильный системный префикс; для Claude включаем cache_control."""
     if is_anthropic_model():
         content: Any = [{"type": "text", "text": prompt, "cache_control": {"type": "ephemeral"}}]
         if history:
@@ -319,7 +311,6 @@ def message_block(message: dict[str, Any], index: int) -> tuple[str, dict[str, A
 def prepare_history(
     history: list[dict[str, Any]] | None,
 ) -> tuple[dict[str, Any], str, bool]:
-    """Выбрать новые сообщения, помещающиеся в бюджет контекста."""
     candidates = []
     for index, message in enumerate(history or [], start=1):
         if not is_refused_message(message) or has_write_call(message):
@@ -395,8 +386,7 @@ def build_graph(model: ChatOpenAI, tools: list[StructuredTool], on_event: EventC
                 except Exception as e:  # noqa: BLE001 - ошибка тулза возвращается модели как результат
                     result = {"error": f"Ошибка вызова: {e}", "kind": "platform"}
             evidence[call_id] = result
-            # MCP-сервер возвращает свой request_id в result.call_id; модель может
-            # процитировать именно его вместо LangChain call_id.
+            # Модель может ссылаться на request_id из ответа MCP, а не на LangChain call_id.
             result_call_id = result.get("call_id") if isinstance(result, dict) else getattr(result, "call_id", None)
             if result_call_id:
                 evidence[str(result_call_id)] = result

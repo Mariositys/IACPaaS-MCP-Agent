@@ -1,5 +1,3 @@
-"""CLI агента: iacpaas-agent "вопрос"."""
-
 import argparse
 import asyncio
 import sys

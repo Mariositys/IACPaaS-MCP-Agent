@@ -1,5 +1,3 @@
-"""Браузерный чат над агентом IACPaaS."""
-
 import asyncio
 import json
 import logging
@@ -227,37 +225,3 @@ async def chat_stream(request: ChatRequest, http_request: Request) -> StreamingR
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
-
-
-@app.post("/api/chat")
-async def chat(request: ChatRequest, http_request: Request) -> Any:
-    try:
-        dialogue_id = request.dialogue_id
-        history = store.get_messages(dialogue_id) if dialogue_id and store.get_dialogue(dialogue_id) else []
-        runtime = getattr(http_request.app.state, "agent_runtime", None)
-        result = await run_agent(
-            request.question,
-            read_only=False,
-            allow_preview=True,
-            history=history,
-            runtime=runtime,
-        )
-        result = _with_answer_html(result)
-        result["dialogue_id"] = store.save_message(dialogue_id, request.question, result)
-        return result
-    except Exception as e:  # noqa: BLE001 - ошибка показывается в чате
-        message = str(e)
-        logger.exception("Ошибка /api/chat")
-        lower = message.casefold()
-        if "credentials" in lower or "api_key" in lower or "iacpaas_agent" in lower:
-            return JSONResponse(
-                status_code=500,
-                content={
-                    "error": (
-                        "Не заданы параметры модели: IACPAAS_AGENT_API_KEY, "
-                        "IACPAAS_AGENT_MODEL, IACPAAS_AGENT_BASE_URL."
-                    ),
-                    "kind": "auth",
-                },
-            )
-        return JSONResponse(status_code=500, content={"error": message, "kind": "platform"})

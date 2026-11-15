@@ -267,14 +267,11 @@ button { font: inherit; cursor: pointer; }
 .badge-green { background: rgba(70, 211, 154, .14); color: var(--green); }
 .badge-yellow { background: rgba(245, 196, 81, .14); color: var(--yellow); }
 .badge-red { background: rgba(255, 107, 107, .14); color: var(--red); }
-.badge-gray { background: rgba(169, 183, 204, .12); color: var(--gray); }
-.meta { margin-top: 8px; font-size: 12px; color: var(--muted); }
 details { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
 summary { cursor: pointer; font-size: 13px; color: #cbd0d8; }
 .claim { margin: 10px 0; padding-left: 10px; border-left: 2px solid #3a3f48; }
 .claim-statement { font-size: 13px; font-weight: 600; }
-.claim-meta, .source { margin-top: 4px; font-size: 12px; color: var(--muted); word-break: break-word; }
-.source { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.claim-meta { margin-top: 4px; font-size: 12px; color: var(--muted); word-break: break-word; }
 .source-card { margin-top: 10px; }
 .source-head { padding: 8px 10px; border-left: 3px solid var(--accent); border-radius: 6px; background: rgba(255, 255, 255, .03); }
 .source-tool { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 13px; font-weight: 700; color: var(--accent); word-break: break-word; }

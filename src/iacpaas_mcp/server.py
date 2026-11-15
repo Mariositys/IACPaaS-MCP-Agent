@@ -1,19 +1,3 @@
-"""MCP-сервер IACPaaS: тулзы поверх API импорта-экспорта платформы.
-
-MCP tool               -> операция IACPaaS
-list_inforesources     -> локальный catalog.txt
-get_inforesource       -> GET /api/data/export/user-item (полный экспорт в локальный кэш)
-get_subgraph           -> локальный кэш + страницы offset/next_offset
-count_graph            -> локальный кэш + подсчет по дереву
-search_vertices        -> локальный кэш + список совпавших вершин
-locate_vertex          -> локальный кэш + поиск вершины и её ветки
-get_terminal_values    -> локальный кэш + плоский список терминальных значений
-validate_answer        -> локальная проверка AgentAnswer по evidence сессии
-import_inforesource    -> POST   /api/data/import
-update_vertex          -> PUT    /api/data/update
-delete_inforesource    -> DELETE /api/data/delete
-"""
-
 import hmac
 import json
 import re
@@ -108,8 +92,6 @@ def record_evidence(ctx: Context, result: Any) -> Any:
     return stored
 
 
-# ---------- обход экспортированного дерева ----------
-
 # Местоположение пути: либо в тройных кавычках (может содержать '/'), либо до следующего '/'
 SEGMENT = re.compile(r"‴[^‴]*‴|[^/]+")
 
@@ -130,7 +112,6 @@ def _norm(concept_path: str) -> str:
 def walk(
     vertex: dict[str, Any], concept_path: str = "", metaconcept_path: str = "", depth: int = 0
 ) -> Iterator[tuple[dict[str, Any], str, str, int]]:
-    """Обход в глубину: (вершина, concept_path, metaconcept_path, глубина). Корень ИР - пустые пути."""
     yield vertex, concept_path, metaconcept_path, depth
     for child in vertex.get("successors", []):
         yield from walk(
@@ -148,7 +129,6 @@ def walk_limited(
     depth: int = 0,
     limit_depth: int | None = None,
 ) -> Iterator[tuple[dict[str, Any], str, str, int]]:
-    """Обход в глубину с ограничением глубины от переданной вершины."""
     yield vertex, concept_path, metaconcept_path, depth
     if limit_depth is not None and depth >= limit_depth:
         return
@@ -170,7 +150,6 @@ def walk_with_ancestors(
     limit_depth: int | None = None,
     ancestors: tuple[str, ...] = (),
 ) -> Iterator[tuple[dict[str, Any], str, str, int, tuple[str, ...]]]:
-    """Обход с ограничением глубины и цепочкой именованных предков."""
     yield vertex, concept_path, metaconcept_path, depth, ancestors
     if limit_depth is not None and depth >= limit_depth:
         return
@@ -234,15 +213,12 @@ def to_node(
     )
 
 
-# ---------- read ----------
-
-
 @mcp.tool(annotations=READ, tags={"read"})
 async def list_inforesources(
     query: Annotated[str, Field(max_length=200, description="Подстрока title или path")] = "",
     limit: Annotated[int, Field(ge=1, le=50, description="Максимум ресурсов")] = 20,
 ) -> CatalogListing | ErrorResult:
-    """Найти ресурс в локальном catalog.txt. Это не живой список фонда IACPaaS."""
+    """Найти ресурс в локальном catalog.txt."""
     try:
         return list_entries(query, limit)
     except Exception as e:  # noqa: BLE001 - ошибка файла возвращается клиенту
@@ -257,7 +233,7 @@ async def get_inforesource(
     json_type: Literal["universal"] = "universal",
     refresh: bool = False,
 ) -> InfoResourceDocument | ErrorResult:
-    """Получить ИР из локального кэша: metadata - корень без потомков, json - весь ИР."""
+    """Получить ИР из локального кэша."""
     doc = await cache.load(client(ctx), path, refresh=refresh)
     if isinstance(doc, ErrorResult):
         return doc
@@ -281,7 +257,7 @@ async def get_subgraph(
     view: Literal["compact", "summary", "full"] = "summary",
     refresh: bool = False,
 ) -> Subgraph | ErrorResult:
-    """Постранично получить подграф ИР из локального кэша."""
+    """Постранично получить подграф ИР."""
     doc = await cache.load(client(ctx), path, refresh=refresh)
     if isinstance(doc, ErrorResult):
         return doc
@@ -336,7 +312,7 @@ async def count_graph(
     start: ConceptPath = "",
     refresh: bool = False,
 ) -> GraphCounts | ErrorResult:
-    """Подсчитать вершины и дуги ИР целиком или поддерева от вершины start."""
+    """Подсчитать вершины и дуги."""
     doc = await cache.load(client(ctx), path, refresh=refresh)
     if isinstance(doc, ErrorResult):
         return doc
@@ -372,7 +348,7 @@ async def search_vertices(
     view: Literal["compact", "summary", "full"] = "compact",
     refresh: bool = False,
 ) -> QueryResult | ErrorResult:
-    """Найти все совпадения по названию/значению (by="label") или мете (by="meta")."""
+    """Найти совпадения по названию или мете."""
     doc = await cache.load(client(ctx), path, refresh=refresh)
     if isinstance(doc, ErrorResult):
         return doc
@@ -385,7 +361,8 @@ async def search_vertices(
     for vertex, cp, mp, d in walk(root[0], root[1], root[2], 0):
         field = vertex.get("meta", "") if by == "meta" else vertex.get("name", vertex.get("value", ""))
         hay = str(field).casefold()
-        if (hay == needle) if exact else (needle in hay):
+        matched = hay == needle if exact else needle in hay
+        if matched:
             matches.append(to_node(vertex, cp, mp, d, view))
     page = matches[offset : offset + limit]
     has_more = offset + len(page) < len(matches)
@@ -415,10 +392,7 @@ async def locate_vertex(
     depth: Depth = 2,
     view: Literal["compact", "summary", "full"] = "compact",
 ) -> VertexLookup | ErrorResult:
-    """Найти вершину и сразу вернуть её path и потомков до depth.
-
-    Используйте найденный path как start для get_subgraph или get_terminal_values.
-    """
+    """Найти вершину, вернуть её path и потомков до depth."""
     if not text.strip():
         return ErrorResult(error="Пустой поисковый запрос", kind="validation")
     doc = await cache.load(client(ctx), path)
@@ -496,7 +470,7 @@ async def get_terminal_values(
     include_path: bool = False,
     refresh: bool = False,
 ) -> TerminalValues | ErrorResult:
-    """Плоский список терминалов: property, value, meta; path — только по запросу."""
+    """Плоский список терминальных значений."""
     doc = await cache.load(client(ctx), path, refresh=refresh)
     if isinstance(doc, ErrorResult):
         return doc
@@ -590,11 +564,8 @@ async def get_terminal_values(
 
 @mcp.tool(annotations=READ, tags={"read", "validation"})
 async def validate_answer(ctx: Context, answer: AgentAnswer) -> Verdict:
-    """Проверить AgentAnswer по результатам read-тулзов текущей MCP-сессии."""
+    """Проверить AgentAnswer по evidence текущей сессии."""
     return validate(answer, evidence_store(ctx))
-
-
-# ---------- preview / apply ----------
 
 
 def _apply_blocked(token: str) -> ErrorResult | None:
@@ -610,7 +581,7 @@ async def preview_import(
     resource: InfoResourceDocument,
     clear_if_exists: bool = False,
 ) -> OperationPreview | ErrorResult:
-    """Подготовить импорт ИР. resource может быть минимальным корнем с successors=[]."""
+    """Подготовить импорт ИР."""
     path = _join(folder, resource.title)
     return record_evidence(
         ctx,
@@ -630,7 +601,7 @@ async def apply_import(
     confirmation_token: str,
     clear_if_exists: bool = False,
 ) -> OperationResult | ErrorResult:
-    """Выполнить ранее подготовленный импорт. Вызывается только веб-сервером."""
+    """Выполнить импорт; вызывается веб-сервером."""
     blocked = _apply_blocked(confirmation_token)
     if blocked:
         return blocked
@@ -656,7 +627,7 @@ async def preview_update(
     mark: Annotated[str, Field(description="Новая метка вершины (строкой)")],
     comment: str | None = None,
 ) -> OperationPreview | ErrorResult:
-    """Подготовить изменение вершины и вернуть OperationPreview."""
+    """Подготовить изменение вершины."""
     return record_evidence(
         ctx,
         OperationPreview(
@@ -682,7 +653,7 @@ async def apply_update(
     confirmation_token: str,
     comment: str | None = None,
 ) -> OperationResult | ErrorResult:
-    """Выполнить изменение вершины. Вызывается только веб-сервером."""
+    """Выполнить изменение вершины; вызывается веб-сервером."""
     blocked = _apply_blocked(confirmation_token)
     if blocked:
         return blocked
@@ -706,7 +677,7 @@ async def preview_delete(
     concept_path: ConceptPath | None = None,
     metaconcept_path: MetaconceptPath | None = None,
 ) -> OperationPreview | ErrorResult:
-    """Подготовить удаление/очистку и вернуть OperationPreview."""
+    """Подготовить удаление или очистку."""
     if mode.endswith("SubGraph") and (concept_path is None or metaconcept_path is None):
         return ErrorResult(error=f"Для {mode} нужны concept_path и metaconcept_path", kind="validation")
     return record_evidence(
@@ -731,7 +702,7 @@ async def apply_delete(
     concept_path: ConceptPath | None = None,
     metaconcept_path: MetaconceptPath | None = None,
 ) -> OperationResult | ErrorResult:
-    """Выполнить удаление/очистку. Вызывается только веб-сервером."""
+    """Выполнить удаление или очистку; вызывается веб-сервером."""
     blocked = _apply_blocked(confirmation_token)
     if blocked:
         return blocked

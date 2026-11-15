@@ -1,5 +1,3 @@
-"""Локальный каталог доступных инфоресурсов: один путь на строку."""
-
 from pathlib import Path
 
 from .config import CATALOG_PATH

@@ -73,7 +73,16 @@ npx -y @modelcontextprotocol/inspector uv run iacpaas-mcp
 - `IACPAAS_AGENT_MODEL`;
 - `IACPAAS_AGENT_BASE_URL`.
 
-Уровень рассуждений задается `IACPAAS_AGENT_REASONING_EFFORT` (по умолчанию `low`).
+Агент использует `ChatOpenAI`, поэтому `BASE_URL` должен быть OpenAI-совместимым.
+
+Дополнительные параметры:
+
+- `IACPAAS_AGENT_TEMPERATURE` — по умолчанию `0`; пустое значение отключает передачу;
+- `IACPAAS_AGENT_REASONING_EFFORT` — пусто по умолчанию; `low`/`medium`/`high` только для моделей, которые это поддерживают;
+- `IACPAAS_AGENT_CONTEXT_TOKENS` — длина контекста модели в токенах, по умолчанию `1000000`.
+
+Лимиты в символах считаются приблизительно: `(context_tokens - 8000) * 3 * 0.8`
+для промпта и 75% от этого для истории.
 
 Пример для Polza:
 
@@ -81,7 +90,9 @@ npx -y @modelcontextprotocol/inspector uv run iacpaas-mcp
 IACPAAS_AGENT_API_KEY=...
 IACPAAS_AGENT_MODEL=...
 IACPAAS_AGENT_BASE_URL=https://polza.ai/api/v1
-IACPAAS_AGENT_REASONING_EFFORT=low
+IACPAAS_AGENT_TEMPERATURE=0
+IACPAAS_AGENT_REASONING_EFFORT=
+IACPAAS_AGENT_CONTEXT_TOKENS=1000000
 ```
 
 ```powershell
@@ -96,9 +107,8 @@ claims без источника или без проверяемого `value`/
 суммы, средние и другие вычисленные значения можно приводить в `answer`, но не в claims.
 
 Для prompt caching промпт собран стабильным префиксом: системные правила и история идут
-первыми, новый вопрос — в конце. OpenAI, DeepSeek, Gemini и Grok кэшируют такой префикс
-автоматически, Claude — через `cache_control`. Минимум обычно 1000+ токенов; попадания
-видны в `usage` Polza.
+первыми, новый вопрос — в конце. Провайдеры, которые поддерживают автоматическое
+кэширование, могут переиспользовать такой префикс; явный `cache_control` не используется.
 
 ## Веб-чат
 

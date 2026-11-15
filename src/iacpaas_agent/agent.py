@@ -23,10 +23,31 @@ from .validator import Verdict, fail_safe_answer, validate
 
 load_dotenv()
 
+def env_float(name: str, default: str) -> float | None:
+    raw = (os.getenv(name, default) or "").strip()
+    if not raw:
+        return None
+    try:
+        return float(raw)
+    except ValueError:
+        return None
+
+
+def env_int(name: str, default: int) -> int:
+    try:
+        value = int(os.getenv(name, str(default)))
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
 MODEL_NAME = os.getenv("IACPAAS_AGENT_MODEL")
 BASE_URL = os.getenv("IACPAAS_AGENT_BASE_URL")
 API_KEY = os.getenv("IACPAAS_AGENT_API_KEY")
-REASONING_EFFORT = (os.getenv("IACPAAS_AGENT_REASONING_EFFORT", "low") or "").strip().lower() or None
+TEMPERATURE = env_float("IACPAAS_AGENT_TEMPERATURE", "0")
+REASONING_EFFORT = (os.getenv("IACPAAS_AGENT_REASONING_EFFORT", "") or "").strip().lower() or None
+if REASONING_EFFORT in {"none", "default"}:
+    REASONING_EFFORT = None
 
 MAX_STEPS = 8
 MAX_ATTEMPTS = 3
@@ -51,9 +72,18 @@ TOOL_STATUS = {
     "preview_delete": "Готовлю удаление…",
 }
 
-MAX_HISTORY_CHARS = 1_800_000
-MAX_PROMPT_CHARS = 2_400_000
-CONTEXT_LIMIT_TEXT = "История не помещается в контекст. Начните новый чат."
+CONTEXT_LIMIT_TOKENS = env_int("IACPAAS_AGENT_CONTEXT_TOKENS", 1_000_000)
+OUTPUT_RESERVE_TOKENS = 8_000
+CHARS_PER_TOKEN = 3
+TOKEN_SAFETY = 0.8
+PROMPT_CHAR_LIMIT = max(
+    0,
+    int((CONTEXT_LIMIT_TOKENS - OUTPUT_RESERVE_TOKENS) * CHARS_PER_TOKEN * TOKEN_SAFETY),
+)
+HISTORY_CHAR_LIMIT = int(PROMPT_CHAR_LIMIT * 0.75)
+CONTEXT_LIMIT_TEXT = (
+    f"История не помещается в контекст {CONTEXT_LIMIT_TOKENS:,} токенов. Начните новый чат."
+)
 
 
 class AgentState(TypedDict):
@@ -83,13 +113,16 @@ def make_model() -> ChatOpenAI:
     ]
     if missing:
         raise RuntimeError("Задайте " + ", ".join(missing))
-    return ChatOpenAI(
-        model=MODEL_NAME,
-        base_url=BASE_URL,
-        api_key=API_KEY,
-        temperature=0,
-        reasoning_effort=REASONING_EFFORT,
-    )
+    options: dict[str, Any] = {
+        "model": MODEL_NAME,
+        "base_url": BASE_URL,
+        "api_key": API_KEY,
+    }
+    if TEMPERATURE is not None:
+        options["temperature"] = TEMPERATURE
+    if REASONING_EFFORT is not None:
+        options["reasoning_effort"] = REASONING_EFFORT
+    return ChatOpenAI(**options)
 
 
 def unwrap(result: Any) -> Any:
@@ -202,17 +235,7 @@ class AgentRuntime:
             return unwrap(await self._client.call_tool(name, args))
 
 
-def is_anthropic_model() -> bool:
-    name = (MODEL_NAME or "").casefold()
-    return "claude" in name or "anthropic" in name
-
-
 def system_message(prompt: str, history: str = "") -> SystemMessage:
-    if is_anthropic_model():
-        content: Any = [{"type": "text", "text": prompt, "cache_control": {"type": "ephemeral"}}]
-        if history:
-            content.append({"type": "text", "text": history, "cache_control": {"type": "ephemeral"}})
-        return SystemMessage(content=content)
     return SystemMessage(content=prompt + (f"\n\n{history}" if history else ""))
 
 
@@ -314,7 +337,7 @@ def prepare_history(
     selected = []
     total = 0
     for block, evidence in reversed(candidates):
-        if total + len(block) > MAX_HISTORY_CHARS:
+        if total + len(block) > HISTORY_CHAR_LIMIT:
             if not selected:
                 return {}, "", False
             break
@@ -405,7 +428,7 @@ def build_graph(model: ChatOpenAI, tools: list[StructuredTool], on_event: EventC
             evidence=json.dumps(current_evidence, ensure_ascii=False, indent=2, sort_keys=True, default=str),
             reasons=reasons,
         )
-        if len(SYSTEM_PROMPT) + len(history_text) + len(prompt) > MAX_PROMPT_CHARS:
+        if len(SYSTEM_PROMPT) + len(history_text) + len(prompt) > PROMPT_CHAR_LIMIT:
             answer = AgentAnswer(answer=CONTEXT_LIMIT_TEXT, claims=[], refused=True)
             return {"answer": answer, "reasons": [], "attempts": state["attempts"] + 1}
         try:

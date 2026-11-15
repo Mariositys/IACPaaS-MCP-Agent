@@ -30,8 +30,12 @@ Copy-Item .env.example .env
 
 Для IACPaaS нужен один из вариантов:
 
-- `IACPAAS_API_KEY` — ключ администратора;
-- `IACPAAS_USERNAME` и `IACPAAS_PASSWORD`.
+- `IACPAAS_API_KEY` — специальный строковый ключ, получаемый у администратора;
+- `IACPAAS_USERNAME` и `IACPAAS_PASSWORD` - JWT токен, получаемый при вызове метода signin:
+    - адрес - `https://iacpaas.dvo.ru/api/signin`
+    - тип запроса - POST запрос
+    - в заголовок добавить Content-Type: application/json
+    - данные запроса: JSON-строка вида `{"username":"...", "password":"..."}`, где вместо `"..."` указываются логин и пароль пользователя
 
 Базовый URL захардкожен: `https://iacpaas.dvo.ru`.
 
@@ -139,11 +143,11 @@ MCP/Copilot. Ошибки чтения приходят как `ErrorResult` с 
 - `src/iacpaas_agent` - LangGraph-агент и валидатор;
 - `src/iacpaas_web` - браузерный чат на FastAPI и SQLite;
 - `catalog.txt` - локальный каталог ресурсов для `list_inforesources`;
-- `docs` - архитектура, сценарии и соответствие API;
+- `docs` - архитектура, сценарии и описание тулзов;
 - `.vscode/mcp.json`, `.github/agents/iacpaas.agent.md` - режим VS Code.
 
 ### Документация
 
 - `docs/architecture.md` - схема режимов, контекст и цикл агента;
 - `docs/scenarios.md` - ручные сценарии проверки;
-- `docs/tool-mapping.md` - MCP-тулзы, лимиты и операции IACPaaS.
+- `docs/tools-description.md` - MCP-тулзы, аргументы и операции IACPaaS.

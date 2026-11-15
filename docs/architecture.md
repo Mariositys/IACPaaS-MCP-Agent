@@ -21,20 +21,21 @@ flowchart LR
 - **VS Code** - MCP-сервер подключается из `.vscode/mcp.json`, поведение задает
   `.github/agents/iacpaas.agent.md`. Доступны только read-only тулзы и
   `validate_answer`; сервер хранит evidence чтений в рамках MCP-процесса.
-  Preview- и apply-тулзы в VS Code не входят в набор агента, поэтому write-операции
-  там недоступны: они выполняются в веб-чате или CLI после подтверждения плана.
-  По инструкции агент должен вызвать проверку перед финальным ответом, но вызов
-  остается на усмотрение модели.
+  Preview- и apply-тулзы в VS Code не входят в набор агента. Добавление, изменение
+  и удаление выполняются только в веб-чате через кнопку или в CLI через `y/N`.
+  В VS Code нельзя строго подтвердить write-операцию: текстовый ответ в чате не является
+  надёжным подтверждением, поэтому режим остается read-only. По инструкции VS Code агент должен
+  вызвать проверку перед финальным ответом, но вызов остается на усмотрение модели.
 - **Standalone CLI** - `iacpaas-agent`: LangGraph-цикл, структурированный ответ,
   детерминированная проверка. При `IACPAAS_ALLOW_WRITE=true` получает preview-тулзы,
   печатает план и выполняет apply только после ответа `y`; иначе работает read-only.
+  CLI запускает отдельный MCP-процесс на один запуск агента.
 - **Веб-чат** - `iacpaas-web`: FastAPI и одна HTML-страница, тот же `run_agent`
   с read- и preview-тулзами. Мутации разрешены только при `IACPAAS_ALLOW_WRITE=true`
   и после подтверждения плана. Все чаты и ходы хранятся в SQLite; evidence прошлых
   вызовов добавляется в пул с ID `m{message_id}_...`; трасса tool calls сохраняется
   в `messages.calls` и доступна в «Технических деталях» для ответов с claims.
-  `AgentRuntime` создает один MCP-клиент в `lifespan` и кэширует наборы тулзов;
-  CLI по-прежнему запускает MCP на один вызов.
+  `AgentRuntime` создает один MCP-клиент в `lifespan` и кэширует наборы тулзов.
 
 ## Цикл агента
 
@@ -61,21 +62,20 @@ flowchart LR
 
 | Модуль | Назначение |
 |---|---|
-| `src/iacpaas_mcp/server.py` | MCP-тулзы, проверки ошибок, подтверждение записи |
-| `src/iacpaas_mcp/catalog.py` | локальный `catalog.txt`: поиск, проверка и обновление |
-| `src/iacpaas_mcp/client.py` | HTTP-адаптер к IACPaaS, авторизация, `ErrorResult` |
-| `src/iacpaas_mcp/models.py` | Pydantic-модели входов/выходов тулзов |
-| `catalog.txt` | список доступных ресурсов: один `path` на строку |
-| `src/iacpaas_mcp/config.py` | константы, базовый URL, секреты из `.env`/окружения |
 | `src/iacpaas_agent/agent.py` | LangGraph-цикл, обертки MCP-тулзов, модель |
+| `src/iacpaas_agent/prompts.py` | промпты агента |
 | `src/iacpaas_agent/schemas.py` | `AgentAnswer`, `Claim`, `Source` |
 | `src/iacpaas_agent/validator.py` | детерминированная проверка ответа |
-| `src/iacpaas_agent/prompts.py` | промпты агента |
+| `src/iacpaas_mcp/catalog.py` | локальный `catalog.txt`: поиск, проверка и обновление |
+| `src/iacpaas_mcp/client.py` | HTTP-адаптер к IACPaaS, авторизация, `ErrorResult` |
+| `src/iacpaas_mcp/config.py` | константы, базовый URL, секреты из `.env`/окружения |
+| `src/iacpaas_mcp/models.py` | Pydantic-модели входов/выходов тулзов |
+| `src/iacpaas_mcp/server.py` | MCP-тулзы, проверки ошибок, подтверждение записи |
 | `src/iacpaas_web/app.py` | FastAPI: чат, сессии, health |
-| `src/iacpaas_web/store.py` | SQLite: чаты и все ходы без удаления |
 | `src/iacpaas_web/index.html` | разметка чата |
-| `src/iacpaas_web/static/style.css` | темная тема |
 | `src/iacpaas_web/static/app.js` | логика чата и источники |
+| `src/iacpaas_web/static/style.css` | темная тема |
+| `src/iacpaas_web/store.py` | SQLite: чаты и все ходы без удаления |
 
 ## Гарантии и границы
 
@@ -90,16 +90,15 @@ flowchart LR
   не передавать). `reasoning_effort` передается только если задан.
 - Prompt caching: системный промпт и история идут первыми, новый вопрос - в конце;
   evidence передается в answer-промпт. Явный `cache_control` не используется.
-- «Без внутренних знаний» означает: нет подтвержденного источника - нет утверждения
+- Нет подтвержденного источника - нет утверждения
   в `claims`. Свободный текст `answer` валидатором не проверяется.
 - В режиме VS Code валидатор вызывается отдельным тулзом `validate_answer`, но
   custom agent не принуждает модель к вызову. Гарантия появляется только в
   режимах, где completion tool нельзя обойти.
-- Веб-чат и CLI без авторизации пользователей. Preview-тулзы доступны, но мутации
+- В веб-чате и CLI мутации
   разрешены только при `IACPAAS_ALLOW_WRITE=true` и после подтверждения плана:
   кнопкой в веб-чате или ответом `y` в CLI. В CLI подтверждение доступно только
   при интерактивном stdin. В веб-чате все чаты и ходы хранятся в `data/chat.db` и не
   удаляются; в модель уходят только ходы в пределах лимита истории, отказы и fail-safe
   в контекст не включаются; исключение - refused-ход с preview-вызовом, нужный для
   подтверждения.
-- Сжатие ответов и автотесты отложены до v2.

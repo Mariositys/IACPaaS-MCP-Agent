@@ -85,7 +85,9 @@ uv run iacpaas-agent "Сколько вершин в ИР «<ресурс>»?"
 Веб-агенту доступны 7 read-only и 3 preview-тулза; `validate_answer` вызывается
 внутренним пайплайном, apply-тулзы — веб-сервером или CLI. CLI при
 `IACPAAS_ALLOW_WRITE=true` получает preview и подтверждает операцию ответом `y`;
-иначе работает read-only. VS Code получает read-only тулзы и `validate_answer`.
+иначе работает read-only. VS Code получает read-only тулзы и `validate_answer`:
+в нем нельзя строго подтвердить добавление, изменение или удаление — нет кнопки,
+как в веб-чате, и `y/N`, как в CLI, а текстовое «да» в чате подтверждением не считается.
 В VS Code после чтения агент должен вызвать `validate_answer` с `AgentAnswer`,
 где каждый claim ссылается на
 `call_id` из результата и JSON Pointer. При `ok=false` агент исправляет ответ и

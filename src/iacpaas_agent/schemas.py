@@ -17,7 +17,7 @@ class Source(BaseModel):
 
 
 class Claim(BaseModel):
-    statement: str = Field(min_length=1, description="Утверждение на естественном языке")
+    statement: str = Field(min_length=1, description="Смысл утверждения без самого значения; значение задается в value или quote")
     value: bool | int | float | str | None = Field(None, description="Значение, если утверждение про число или строку")
     quote: str | None = Field(None, min_length=1, description="Точная цитата из источника для текстового утверждения")
     sources: list[Source] = Field(min_length=1, description="Хотя бы один источник")

@@ -13,7 +13,6 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
 from iacpaas_agent.agent import MODEL_NAME, WRITE_TOOLS, AgentRuntime, run_agent
-from iacpaas_agent.prompts import PROMPT_VERSION
 from iacpaas_mcp.config import get_apply_token
 
 from . import store
@@ -80,7 +79,7 @@ async def index() -> str:
 
 @app.get("/api/health")
 async def health() -> dict[str, Any]:
-    return {"ok": True, "model": MODEL_NAME or "не задана", "prompt_version": PROMPT_VERSION}
+    return {"ok": True, "model": MODEL_NAME or "не задана"}
 
 
 @app.get("/api/dialogues")

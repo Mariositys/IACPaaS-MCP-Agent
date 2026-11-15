@@ -326,12 +326,24 @@ def message_block(message: dict[str, Any], index: int) -> tuple[str, dict[str, A
     return block, evidence
 
 
+def refused_block(message: dict[str, Any], index: int) -> str:
+    message_id = message.get("message_id") or index
+    question = str(message.get("question", ""))[:500]
+    answer = message.get("answer")
+    if not isinstance(answer, dict):
+        answer = {}
+    text = str(answer.get("answer") or message.get("final") or "")[:300]
+    return f"Ход m{message_id}. Вопрос: {question}\nОтвет (отказ): {text}"
+
+
 def prepare_history(
     history: list[dict[str, Any]] | None,
 ) -> tuple[dict[str, Any], str, bool]:
     candidates = []
     for index, message in enumerate(history or [], start=1):
-        if not is_refused_message(message) or has_write_call(message):
+        if is_refused_message(message) and not has_write_call(message):
+            candidates.append((refused_block(message, index), {}))
+        else:
             candidates.append(message_block(message, index))
 
     selected = []

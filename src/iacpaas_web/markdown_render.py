@@ -118,7 +118,11 @@ def normalize_markdown(text: str) -> str:
         elif fenced:
             lines.append(line)
         else:
-            lines.append(_normalize_inline_table(line))
+            line = re.sub(r"\s+(#{1,6}\s+)", r"\n\n\1", line)
+            line = re.sub(r"\s+-\s+(?=\[\d+\])", "\n- ", line)
+            for part in line.splitlines():
+                part = re.sub(r"^(#{1,6}\s+[^|]+?)\s{2,}(?=\S)", r"\1\n\n", part)
+                lines.append(_normalize_inline_table(part))
     return "\n".join(lines)
 
 

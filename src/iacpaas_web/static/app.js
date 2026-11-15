@@ -1,5 +1,4 @@
 const messages = document.getElementById("messages");
-const main = document.querySelector(".main");
 const empty = document.getElementById("empty");
 const form = document.getElementById("composer");
 const input = document.getElementById("question");
@@ -97,8 +96,12 @@ function revealWords(node, onDone, onProgress) {
   }, delay);
 }
 
+function syncComposerPadding() {
+  messages.style.paddingBottom = `${form.offsetHeight + 24}px`;
+}
+
 function scrollDown() {
-  syncComposerSpace();
+  syncComposerPadding();
   messages.scrollTop = messages.scrollHeight;
 }
 
@@ -120,35 +123,7 @@ function resizeInput() {
   const height = Math.min(input.scrollHeight + 2, 160);
   input.style.height = `${height}px`;
   input.style.overflowY = input.scrollHeight + 2 > 160 ? "auto" : "hidden";
-  syncComposerSpace();
-}
-
-function syncComposerSpace() {
-  const row = messages.querySelector(".row");
-  const style = getComputedStyle(messages);
-  const left = parseFloat(style.paddingLeft) || 0;
-  const right = parseFloat(style.paddingRight) || 0;
-  const contentWidth = Math.max(0, messages.clientWidth - left - right);
-
-  if (row && main) {
-    const rowRect = row.getBoundingClientRect();
-    const mainRect = main.getBoundingClientRect();
-    form.style.width = `${rowRect.width}px`;
-    form.style.left = `${rowRect.left - mainRect.left + rowRect.width / 2}px`;
-  } else {
-    form.style.width = `${Math.min(900, contentWidth)}px`;
-    form.style.left = `${left + contentWidth / 2}px`;
-  }
-
-  messages.style.paddingBottom = `${form.offsetHeight + 24}px`;
-
-  const field = form.querySelector(".composer-field");
-  if (field) {
-    const fieldRect = field.getBoundingClientRect();
-    const mainRect = main.getBoundingClientRect();
-    const fadeBottom = Math.max(0, mainRect.bottom - fieldRect.top);
-    main.style.setProperty("--composer-fade-bottom", `${fadeBottom}px`);
-  }
+  syncComposerPadding();
 }
 
 function updateSendState() {

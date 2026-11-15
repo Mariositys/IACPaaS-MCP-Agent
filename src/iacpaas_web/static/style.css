@@ -11,6 +11,7 @@
   --red: #ff6b6b;
   --gray: #b4bac4;
   --scrollbar-width: 10px;
+  --messages-pad: 24px;
 }
 
 * { box-sizing: border-box; }
@@ -129,39 +130,11 @@ button { font: inherit; cursor: pointer; }
 .chat-title { font-size: 14px; font-weight: 600; }
 .chat-meta { margin-top: 2px; font-size: 12px; color: var(--muted); }
 .main { position: relative; flex: 1 1 0; display: flex; flex-direction: column; min-width: 0; }
-.main::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: var(--scrollbar-width);
-  bottom: 0;
-  height: var(--composer-fade-bottom, 0px);
-  background: var(--bg);
-  pointer-events: none;
-  z-index: 8;
-}
-.main::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: var(--scrollbar-width);
-  bottom: var(--composer-fade-bottom, 0px);
-  height: 25px;
-  background: linear-gradient(
-    to bottom,
-    rgba(22, 24, 28, 0) 0%,
-    rgba(22, 24, 28, .55) 30%,
-    rgba(22, 24, 28, .95) 70%,
-    var(--bg) 100%
-  );
-  pointer-events: none;
-  z-index: 9;
-}
 .messages {
   flex: 1;
   overflow: auto;
-  padding: 24px;
-  padding-left: calc(24px + var(--scrollbar-width) / 2);
+  padding: var(--messages-pad);
+  padding-left: calc(var(--messages-pad) + var(--scrollbar-width) / 2);
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -316,16 +289,29 @@ pre {
 
 .composer {
   position: absolute;
+  left: 0;
+  right: var(--scrollbar-width);
   bottom: 0;
-  left: 50%;
-  display: block;
-  width: calc(100% - 48px);
-  max-width: 900px;
-  box-sizing: border-box;
-  padding: 14px 0 18px;
-  background: transparent;
-  transform: translateX(-50%);
+  padding: 0px var(--messages-pad) 18px calc(var(--messages-pad) + var(--scrollbar-width) / 2);
+  background: var(--bg);
   z-index: 10;
+}
+
+.composer::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100%);
+  height: 25px;
+  background: linear-gradient(
+    to bottom,
+    rgba(22, 24, 28, 0) 0%,
+    rgba(22, 24, 28, .5) 25%,
+    rgba(22, 24, 28, .9) 50%,
+    var(--bg) 75%,
+    var(--bg) 100%
+  );
   pointer-events: none;
 }
 
@@ -334,13 +320,14 @@ pre {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: end;
   width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
   box-sizing: border-box;
   background: #171a1f;
   border: 1px solid var(--line);
   border-radius: 10px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, .35);
   overflow: hidden;
-  pointer-events: auto;
 }
 
 .composer-field.has-multiline {
@@ -435,8 +422,7 @@ input::placeholder, textarea::placeholder { color: #868d98; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 @media (max-width: 820px) {
+  :root { --messages-pad: 16px; }
   .sidebar { display: none; }
   .bubble { max-width: 100%; }
-  .messages { padding: 16px; padding-left: calc(16px + var(--scrollbar-width) / 2); }
-  .composer { width: calc(100% - 32px); }
 }

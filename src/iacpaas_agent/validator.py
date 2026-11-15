@@ -1,5 +1,4 @@
 import json
-import re
 import unicodedata
 from typing import Any
 
@@ -81,25 +80,8 @@ def _check_write_preview(answer: AgentAnswer, evidence: dict[str, Any]) -> list[
     def is_preview(value: Any) -> bool:
         return isinstance(value, dict) and "operation" in value and "success" not in value
 
-    all_previews = [call_id for call_id, value in evidence.items() if is_preview(value)]
-    source_ids = {source.call_id for claim in answer.claims for source in claim.sources}
-    relevant_previews = [call_id for call_id in source_ids if is_preview(evidence.get(call_id))]
-
-    text = " ".join([answer.answer, *(claim.statement for claim in answer.claims)]).casefold()
-    success_pattern = re.compile(
-        r"\b(?:удал[её]н(?:а|о|ы)?|измен[её]н(?:а|о|ы)?|"
-        r"(?<!будет )(?<!не )выполнен(?:а|о|ы)?|"
-        r"обновл[её]н(?:а|о|ы)?)\b"
-    )
-    if answer.requires_confirmation:
-        if not all_previews:
-            return ["requires_confirmation=true без OperationPreview"]
-        if success_pattern.search(text):
-            return ["OperationPreview не является выполнением операции"]
-        return []
-
-    if relevant_previews and success_pattern.search(text):
-        return ["write-тулз вернул OperationPreview; нельзя утверждать, что операция выполнена"]
+    if answer.requires_confirmation and not any(is_preview(value) for value in evidence.values()):
+        return ["requires_confirmation=true без OperationPreview"]
     return []
 
 

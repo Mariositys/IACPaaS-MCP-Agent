@@ -51,19 +51,15 @@ TOOL_STATUS = {
     "preview_delete": "Готовлю удаление…",
 }
 
-CONTEXT_LIMIT_TOKENS = 1_000_000
-OUTPUT_RESERVE_TOKENS = 8_000
-CHARS_PER_TOKEN = 3
-TOKEN_SAFETY = 0.8
-PROMPT_CHAR_LIMIT = int((CONTEXT_LIMIT_TOKENS - OUTPUT_RESERVE_TOKENS) * CHARS_PER_TOKEN * TOKEN_SAFETY)
-HISTORY_CHAR_LIMIT = int(PROMPT_CHAR_LIMIT * 0.75)
-CONTEXT_LIMIT_TEXT = f"История не помещается в контекст {CONTEXT_LIMIT_TOKENS:,} токенов. Начните новый чат."
+MAX_HISTORY_CHARS = 1_800_000
+MAX_PROMPT_CHARS = 2_400_000
+CONTEXT_LIMIT_TEXT = "История не помещается в контекст. Начните новый чат."
 
 
 class AgentState(TypedDict):
     question: str
     history: str
-    history_evidence: dict[str, Any]
+    history_ids: set[str]
     messages: Annotated[list[AnyMessage], add_messages]
     evidence: dict[str, Any]
     calls: list[dict[str, Any]]
@@ -227,15 +223,15 @@ def build_history_text(history: str) -> str:
 
 
 def initial_state(question: str, history: str = "", history_evidence: dict[str, Any] | None = None) -> AgentState:
-    evidence = dict(history_evidence or {})
+    evidence = history_evidence or {}
     history_text = build_history_text(history)
     messages = [system_message(GATHER_PROMPT, history_text), HumanMessage(content=question)]
     return {
         "question": question,
         "history": history,
-        "history_evidence": evidence,
+        "history_ids": set(evidence),
         "messages": messages,
-        "evidence": dict(evidence),
+        "evidence": evidence,
         "calls": [],
         "answer": None,
         "verdict": None,
@@ -269,8 +265,7 @@ def message_block(message: dict[str, Any], index: int) -> tuple[str, dict[str, A
     if not isinstance(calls, list):
         calls = []
 
-    call_ids = []
-    call_arguments = []
+    call_items = []
     evidence = {}
     for call in calls[:10]:
         old_id = call.get("call_id")
@@ -278,13 +273,15 @@ def message_block(message: dict[str, Any], index: int) -> tuple[str, dict[str, A
             continue
         new_id = f"m{message_id}_{old_id}"
         result = call.get("result")
+        source_ids = [new_id]
         evidence[new_id] = result
         result_call_id = result.get("call_id") if isinstance(result, dict) else getattr(result, "call_id", None)
         if result_call_id:
-            evidence[f"m{message_id}_{result_call_id}"] = result
-        call_ids.append(new_id)
+            source_ids.append(f"m{message_id}_{result_call_id}")
+            evidence[source_ids[-1]] = result
         call_info = {
             "call_id": new_id,
+            "source_ids": source_ids,
             "tool": call.get("tool"),
             "args": call.get("args", {}),
         }
@@ -292,17 +289,15 @@ def message_block(message: dict[str, Any], index: int) -> tuple[str, dict[str, A
             call_info["status"] = call["status"]
         if call.get("operation_result") is not None:
             call_info["operation_result"] = call["operation_result"]
-        call_arguments.append(call_info)
+        call_info["result"] = result
+        call_items.append(call_info)
 
     block = "\n".join(
         [
             f"Ход m{message_id}. Вопрос: {question}",
             f"Ответ: {text}",
-            f"ID источников: {', '.join(call_ids) or 'нет'}",
-            "Аргументы вызовов:",
-            json.dumps(call_arguments, ensure_ascii=False, indent=2, sort_keys=True, default=str),
-            "Источники:",
-            json.dumps(evidence, ensure_ascii=False, indent=2, sort_keys=True, default=str),
+            "Вызовы:",
+            json.dumps(call_items, ensure_ascii=False, indent=2, sort_keys=True, default=str),
         ]
     )
     return block, evidence
@@ -319,7 +314,7 @@ def prepare_history(
     selected = []
     total = 0
     for block, evidence in reversed(candidates):
-        if total + len(block) > HISTORY_CHAR_LIMIT:
+        if total + len(block) > MAX_HISTORY_CHARS:
             if not selected:
                 return {}, "", False
             break
@@ -403,14 +398,14 @@ def build_graph(model: ChatOpenAI, tools: list[StructuredTool], on_event: EventC
             reasons = "Предыдущая проверка не прошла:\n" + "\n".join(f"- {r}" for r in state["reasons"])
         history_text = build_history_text(state["history"])
         current_evidence = {
-            key: value for key, value in state["evidence"].items() if key not in state["history_evidence"]
+            key: value for key, value in state["evidence"].items() if key not in state["history_ids"]
         }
         prompt = ANSWER_PROMPT.format(
             question=state["question"],
             evidence=json.dumps(current_evidence, ensure_ascii=False, indent=2, sort_keys=True, default=str),
             reasons=reasons,
         )
-        if len(SYSTEM_PROMPT) + len(history_text) + len(prompt) > PROMPT_CHAR_LIMIT:
+        if len(SYSTEM_PROMPT) + len(history_text) + len(prompt) > MAX_PROMPT_CHARS:
             answer = AgentAnswer(answer=CONTEXT_LIMIT_TEXT, claims=[], refused=True)
             return {"answer": answer, "reasons": [], "attempts": state["attempts"] + 1}
         try:

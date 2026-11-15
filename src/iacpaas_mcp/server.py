@@ -110,35 +110,22 @@ def _norm(concept_path: str) -> str:
 
 
 def walk(
-    vertex: dict[str, Any], concept_path: str = "", metaconcept_path: str = "", depth: int = 0
+    vertex: dict[str, Any],
+    concept_path: str = "",
+    metaconcept_path: str = "",
+    depth: int = 0,
+    max_depth: int | None = None,
 ) -> Iterator[tuple[dict[str, Any], str, str, int]]:
     yield vertex, concept_path, metaconcept_path, depth
+    if max_depth is not None and depth >= max_depth:
+        return
     for child in vertex.get("successors", []):
         yield from walk(
             child,
             _join(concept_path, _segment(child)),
             _join(metaconcept_path, child.get("meta", "")),
             depth + 1,
-        )
-
-
-def walk_limited(
-    vertex: dict[str, Any],
-    concept_path: str = "",
-    metaconcept_path: str = "",
-    depth: int = 0,
-    limit_depth: int | None = None,
-) -> Iterator[tuple[dict[str, Any], str, str, int]]:
-    yield vertex, concept_path, metaconcept_path, depth
-    if limit_depth is not None and depth >= limit_depth:
-        return
-    for child in vertex.get("successors", []):
-        yield from walk_limited(
-            child,
-            _join(concept_path, _segment(child)),
-            _join(metaconcept_path, child.get("meta", "")),
-            depth + 1,
-            limit_depth,
+            max_depth,
         )
 
 
@@ -147,11 +134,11 @@ def walk_with_ancestors(
     concept_path: str = "",
     metaconcept_path: str = "",
     depth: int = 0,
-    limit_depth: int | None = None,
+    max_depth: int | None = None,
     ancestors: tuple[str, ...] = (),
 ) -> Iterator[tuple[dict[str, Any], str, str, int, tuple[str, ...]]]:
     yield vertex, concept_path, metaconcept_path, depth, ancestors
-    if limit_depth is not None and depth >= limit_depth:
+    if max_depth is not None and depth >= max_depth:
         return
     label = str(vertex.get("name", vertex.get("value", "")))
     for child in vertex.get("successors", []):
@@ -160,7 +147,7 @@ def walk_with_ancestors(
             _join(concept_path, _segment(child)),
             _join(metaconcept_path, child.get("meta", "")),
             depth + 1,
-            limit_depth,
+            max_depth,
             ancestors + (label,),
         )
 
@@ -267,7 +254,7 @@ async def get_subgraph(
     if root is None:
         return ErrorResult(error=f"Вершина '{start}' не найдена в ИР '{path}'", kind="not_found")
 
-    entries = list(walk_limited(root[0], root[1], root[2], 0, depth))
+    entries = list(walk(root[0], root[1], root[2], 0, max_depth=depth))
     total = len(entries)
     page = entries[offset : offset + limit]
     nodes = [to_node(vertex, cp, mp, d, view) for vertex, cp, mp, d in page]
@@ -317,11 +304,7 @@ async def count_graph(
     if isinstance(doc, ErrorResult):
         return doc
     target = _norm(start)
-    root: tuple[dict[str, Any], str, str, int] | None = None
-    for vertex, cp, mp, d in walk(doc):
-        if cp == target:
-            root = (vertex, cp, mp, d)
-            break
+    root = find_root(doc, target)
     if root is None:
         return ErrorResult(error=f"Вершина '{start}' не найдена в ИР '{path}'", kind="not_found")
     ids: set[Any] = set()
@@ -428,7 +411,7 @@ async def locate_vertex(
     for _, _, vertex, cp, mp, d, field in candidates[:limit]:
         children: list[GraphNode] = []
         truncated = False
-        descendants = walk_limited(vertex, cp, mp, 0, depth)
+        descendants = walk(vertex, cp, mp, 0, max_depth=depth)
         next(descendants, None)
         for child, child_path, child_meta_path, child_depth in descendants:
             if len(children) >= MAX_FIND_CHILDREN:

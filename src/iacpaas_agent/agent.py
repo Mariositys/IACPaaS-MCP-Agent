@@ -17,7 +17,7 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 
-from .prompts import ANSWER_PROMPT, GATHER_PROMPT, SYSTEM_PROMPT
+from .prompts import ANSWER_PROMPT, AGENT_PROMPT
 from .schemas import AgentAnswer
 from .validator import Verdict, fail_safe_answer, validate
 
@@ -248,7 +248,7 @@ def build_history_text(history: str) -> str:
 def initial_state(question: str, history: str = "", history_evidence: dict[str, Any] | None = None) -> AgentState:
     evidence = history_evidence or {}
     history_text = build_history_text(history)
-    messages = [system_message(GATHER_PROMPT, history_text), HumanMessage(content=question)]
+    messages = [system_message(AGENT_PROMPT, history_text), HumanMessage(content=question)]
     return {
         "question": question,
         "history": history,
@@ -428,12 +428,12 @@ def build_graph(model: ChatOpenAI, tools: list[StructuredTool], on_event: EventC
             evidence=json.dumps(current_evidence, ensure_ascii=False, indent=2, sort_keys=True, default=str),
             reasons=reasons,
         )
-        if len(SYSTEM_PROMPT) + len(history_text) + len(prompt) > PROMPT_CHAR_LIMIT:
+        if len(AGENT_PROMPT) + len(history_text) + len(prompt) > PROMPT_CHAR_LIMIT:
             answer = AgentAnswer(answer=CONTEXT_LIMIT_TEXT, claims=[], refused=True)
             return {"answer": answer, "reasons": [], "attempts": state["attempts"] + 1}
         try:
             answer = await structured_model.ainvoke(
-                [system_message(SYSTEM_PROMPT, history_text), HumanMessage(content=prompt)]
+                [system_message(AGENT_PROMPT, history_text), HumanMessage(content=prompt)]
             )
             if isinstance(answer, str):
                 answer = AgentAnswer.model_validate_json(answer)

@@ -29,12 +29,12 @@ uv run iacpaas-mcp
 
 Ожидается: у вершин канонический `concept_path`; `Subgraph.path` и `QueryResult.path`
 содержат путь ИР; при превышении `limit` стоят `has_more=true` и `next_offset`,
-а у `locate_vertex` — `truncated=true`. `locate_vertex` отдаёт
-явный `path`, а `get_terminal_values` — плоский список «свойство → значение» за один
+а у `locate_vertex` - `truncated=true`. `locate_vertex` отдаёт
+явный `path`, а `get_terminal_values` - плоский список «свойство → значение» за один
 вызов. Компактный `search_vertices` содержит только `label`, `type`, `meta`, `concept_path`.
 
 Проверить лимиты: `get_subgraph` с `depth=11` и `limit=501` должен вернуть
-validation error; `get_terminal_values` с маленьким `max_chars` — `truncated_reason="size"`.
+validation error; `get_terminal_values` с маленьким `max_chars` - `truncated_reason="size"`.
 
 ## 4. Несуществующая вершина
 
@@ -88,10 +88,10 @@ uv run iacpaas-agent "Сколько вершин в ИР «<ресурс>»?"
 поведение standalone- и IDE-режимов на одинаковых данных.
 
 Веб-агенту доступны 7 read-only и 3 preview-тулза; `validate_answer` вызывается
-внутренним пайплайном, apply-тулзы — веб-сервером или CLI. CLI при
+внутренним пайплайном, apply-тулзы - веб-сервером или CLI. CLI при
 `IACPAAS_ALLOW_WRITE=true` получает preview и подтверждает операцию ответом `y`;
 иначе работает read-only. VS Code получает read-only тулзы и `validate_answer`:
-в нем нельзя строго подтвердить добавление, изменение или удаление — нет кнопки,
+в нем нельзя строго подтвердить добавление, изменение или удаление - нет кнопки,
 как в веб-чате, и `y/N`, как в CLI, а текстовое «да» в чате подтверждением не считается.
 В VS Code после чтения агент должен вызвать `validate_answer` с `AgentAnswer`,
 где каждый claim ссылается на

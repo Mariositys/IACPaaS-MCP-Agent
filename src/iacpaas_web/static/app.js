@@ -284,7 +284,7 @@ function sourceGroup(pointer) {
 function sourceValue(value) {
   if (value === true) return "да";
   if (value === false) return "нет";
-  if (value === null || value === undefined) return "—";
+  if (value === null || value === undefined) return "-";
   if (typeof value === "number") {
     return String(value).replace(".", ",");
   }
@@ -524,7 +524,7 @@ function operationPreviews(calls) {
 }
 
 function operationValue(value) {
-  if (value === undefined || value === null || value === "") return "—";
+  if (value === undefined || value === null || value === "") return "-";
   if (typeof value === "object") return JSON.stringify(value, null, 2);
   return String(value);
 }

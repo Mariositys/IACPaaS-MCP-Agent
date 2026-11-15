@@ -1,6 +1,5 @@
 # Ручные сценарии
 
-Автотесты отложены; ниже - проверки, которые можно выполнить вручную.
 Сценарий 1 не требует доступа к IACPaaS, остальные требуют ключ или логин.
 В примерах ниже `<ресурс>` и `<вершина>` замените на значения из `catalog.txt` и результатов тулзов.
 
@@ -11,8 +10,8 @@ uv run iacpaas-mcp --version
 uv run iacpaas-mcp
 ```
 
-Ожидается: версия `0.1.0`, сервер стартует в stdio. В MCP Inspector видно
-14 тулзов: preview-тулзы и внутренние apply-тулзы.
+Ожидается: версия `0.1.0`, сервер стартует в stdio. MCP-клиент должен показать
+14 тулзов: 7 read, `validate_answer`, 3 preview и 3 apply.
 
 ## 2. Чтение ИР
 
@@ -83,9 +82,9 @@ uv run iacpaas-agent "Сколько вершин в ИР «<ресурс>»?"
 Один и тот же вопрос можно прогнать в CLI (сценарий 6) и в VS Code, чтобы сравнить
 поведение standalone- и IDE-режимов.
 
-Веб-агенту доступны 7 read-only тулзов (включая `list_inforesources`, `locate_vertex` и
-`get_terminal_values`), `validate_answer` и 3 preview-тулза; apply-тулзы вызывает только
-веб-сервер. CLI получает только read-only тулзы; VS Code — read-only и `validate_answer`.
+Веб-агенту доступны 7 read-only и 3 preview-тулза; `validate_answer` вызывается
+внутренним пайплайном, apply-тулзы — только веб-сервером. CLI получает только
+read-only тулзы; VS Code — read-only и `validate_answer`.
 В VS Code после чтения агент должен вызвать `validate_answer` с `AgentAnswer`,
 где каждый claim ссылается на
 `call_id` из результата и JSON Pointer. При `ok=false` агент исправляет ответ и
@@ -97,7 +96,7 @@ uv run iacpaas-agent "Сколько вершин в ИР «<ресурс>»?"
 Текстовое подтверждение не выполняет операцию. Мутация проходит только при
 `IACPAAS_ALLOW_WRITE=true`; иначе возвращается `kind="auth"`.
 
-Диагностика: `uv run iacpaas-mcp --version` проверяет запуск, MCP Inspector показывает
+Диагностика: `uv run iacpaas-mcp --version` проверяет запуск, MCP-клиент показывает
 14 тулзов, а ошибки приходят как `ErrorResult` с `kind` (`auth`, `not_found`,
 `platform`, `timeout`, `validation`). Если Copilot не видит сервер, проверьте `.vscode/mcp.json`
 и Output канала MCP/Copilot.

@@ -710,8 +710,8 @@ async def apply_delete(
     result = record_evidence(
         ctx, OperationResult(success=True, operation=mode, path=path, code=data.get("code"))
     )
-    if mode in {"deleteIR", "trashIR", "clearIR"}:
+    if mode in {"deleteIR", "trashIR"}:
         with suppress(Exception):
             remove_entry(path)
-        cache.invalidate(path)
+    cache.invalidate(path)
     return result

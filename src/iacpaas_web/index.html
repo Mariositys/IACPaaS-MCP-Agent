@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IACPaaS Chat</title>
+  <link rel="stylesheet" href="/static/style.css?v={{asset_version}}">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">IACPaaS Chat</div>
+    <div class="status">
+      <span id="model" class="pill">…</span>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-head">
+        <span class="label">Чаты</span>
+        <button id="new-chat" class="ghost" type="button">+ Новый</button>
+      </div>
+      <div id="chat-list" class="chat-list"></div>
+    </aside>
+
+    <main class="main">
+      <section id="messages" class="messages" aria-live="polite">
+        <div id="empty" class="empty">
+          <h1>Чат по инфоресурсам IACPaaS</h1>
+          <p>Ответы строятся только по результатам MCP-инструментов и проверяются валидатором.</p>
+          <div class="chips">
+            <button class="chip" type="button" data-question="Сколько вершин в ИР «Система единиц физических величин»?">Сколько вершин в ИР «Система единиц физических величин»?</button>
+            <button class="chip" type="button" data-question="Найди вершину «Углерод» в ИР «База химических элементов и веществ»">Найди вершину «Углерод» в ИР «База химических элементов и веществ»</button>
+          </div>
+        </div>
+      </section>
+
+      <form id="composer" class="composer">
+        <div class="composer-field">
+          <textarea id="question" rows="1" placeholder="Введите вопрос..." aria-label="Вопрос"></textarea>
+          <div class="composer-actions">
+            <button id="send" type="submit" aria-label="Отправить" title="Отправить" disabled>
+              <span class="icon" aria-hidden="true"></span>
+            </button>
+          </div>
+        </div>
+      </form>
+    </main>
+  </div>
+
+  <script src="/static/app.js?v={{asset_version}}"></script>
+</body>
+</html>

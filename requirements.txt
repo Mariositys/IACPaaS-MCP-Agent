@@ -1,3 +1,0 @@
-fastmcp>=4.1
-httpx2>=2.14
-pydantic-settings>=2

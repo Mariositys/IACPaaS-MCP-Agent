@@ -28,3 +28,16 @@ class AgentAnswer(BaseModel):
         False,
         description="True, если write-тулз вернул OperationPreview и нужно подтверждение пользователя",
     )
+
+
+class AnswerDraft(BaseModel):
+    answer: str = Field(min_length=1, description="Полный Markdown-ответ пользователю")
+    refused: bool = Field(False, description="True, если данных для ответа не хватило")
+    requires_confirmation: bool = Field(
+        False,
+        description="True, если write-тулз вернул OperationPreview и нужно подтверждение пользователя",
+    )
+
+
+class ClaimList(BaseModel):
+    claims: list[Claim] = Field(default_factory=list)

@@ -50,7 +50,10 @@ def quote_matches(quote: str, actual: Any) -> bool:
     return normalize_text(quote) in normalize_text(haystack)
 
 
-def validate(answer: AgentAnswer | str | dict[str, Any], evidence: dict[str, Any]) -> Verdict:
+def validate(
+    answer: AgentAnswer | str | dict[str, Any],
+    evidence: dict[str, Any],
+) -> Verdict:
     if isinstance(answer, str):
         try:
             answer = json.loads(answer)

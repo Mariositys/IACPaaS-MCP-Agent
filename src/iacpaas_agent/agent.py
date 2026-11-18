@@ -17,8 +17,8 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 
-from .prompts import ANSWER_PROMPT, AGENT_PROMPT
-from .schemas import AgentAnswer
+from .prompts import AGENT_TASK, ANSWER_TASK, CLAIMS_TASK, CORE_RULES
+from .schemas import AgentAnswer, AnswerDraft, Claim, ClaimList
 from .validator import Verdict, fail_safe_answer, validate
 
 load_dotenv()
@@ -50,7 +50,8 @@ if REASONING_EFFORT in {"none", "default"}:
     REASONING_EFFORT = None
 
 MAX_STEPS = 8
-MAX_ATTEMPTS = 3
+MAX_CLAIMS_ATTEMPTS = 2
+AGENT_SYSTEM = f"{CORE_RULES}\n\n{AGENT_TASK}"
 AGENT_INTERNAL_TOOLS = {
     "validate_answer",
     "apply_import",
@@ -93,10 +94,13 @@ class AgentState(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
     evidence: dict[str, Any]
     calls: list[dict[str, Any]]
+    draft: AnswerDraft | None
+    claims: list[Claim]
     answer: AgentAnswer | None
     verdict: Verdict | None
     reasons: list[str]
-    attempts: int
+    claims_error: str | None
+    claims_attempts: int
     steps: int
     final: str
 
@@ -248,7 +252,7 @@ def build_history_text(history: str) -> str:
 def initial_state(question: str, history: str = "", history_evidence: dict[str, Any] | None = None) -> AgentState:
     evidence = history_evidence or {}
     history_text = build_history_text(history)
-    messages = [system_message(AGENT_PROMPT, history_text), HumanMessage(content=question)]
+    messages = [system_message(AGENT_SYSTEM, history_text), HumanMessage(content=question)]
     return {
         "question": question,
         "history": history,
@@ -256,10 +260,13 @@ def initial_state(question: str, history: str = "", history_evidence: dict[str, 
         "messages": messages,
         "evidence": evidence,
         "calls": [],
+        "draft": None,
+        "claims": [],
         "answer": None,
         "verdict": None,
         "reasons": [],
-        "attempts": 0,
+        "claims_error": None,
+        "claims_attempts": 0,
         "steps": 0,
         "final": "",
     }
@@ -373,6 +380,7 @@ def context_limit_result(question: str) -> dict[str, Any]:
         "verdict": {"ok": True, "reasons": []},
         "reasons": [],
         "attempts": 0,
+        "claims_attempts": 0,
         "steps": 0,
     }
 
@@ -384,8 +392,14 @@ async def emit_event(on_event: EventCallback | None, message: str, **extra: Any)
 
 def build_graph(model: ChatOpenAI, tools: list[StructuredTool], on_event: EventCallback | None = None):
     model_with_tools = model.bind_tools(tools)
-    structured_model = model.with_structured_output(AgentAnswer)
+    structured_answer = model.with_structured_output(AnswerDraft)
+    structured_claims = model.with_structured_output(ClaimList)
     tool_map = {tool.name: tool for tool in tools}
+
+    def fmt_reasons(items: list[str]) -> str:
+        if not items:
+            return ""
+        return "Предыдущая проверка не прошла:\n" + "\n".join(f"- {item}" for item in items)
 
     async def agent_node(state: AgentState) -> dict[str, Any]:
         await emit_event(
@@ -428,45 +442,123 @@ def build_graph(model: ChatOpenAI, tools: list[StructuredTool], on_event: EventC
 
     async def answer_node(state: AgentState) -> dict[str, Any]:
         await emit_event(on_event, "Формирую ответ…")
-        reasons = ""
-        if state["reasons"]:
-            reasons = "Предыдущая проверка не прошла:\n" + "\n".join(f"- {r}" for r in state["reasons"])
         history_text = build_history_text(state["history"])
         current_evidence = {
             key: value for key, value in state["evidence"].items() if key not in state["history_ids"]
         }
-        prompt = ANSWER_PROMPT.format(
+        system = system_message(CORE_RULES, history_text)
+        prompt = ANSWER_TASK.format(
             question=state["question"],
             evidence=json.dumps(current_evidence, ensure_ascii=False, indent=2, sort_keys=True, default=str),
-            reasons=reasons,
+            reasons=fmt_reasons(state["reasons"]),
         )
-        if len(AGENT_PROMPT) + len(history_text) + len(prompt) > PROMPT_CHAR_LIMIT:
-            answer = AgentAnswer(answer=CONTEXT_LIMIT_TEXT, claims=[], refused=True)
-            return {"answer": answer, "reasons": [], "attempts": state["attempts"] + 1}
+        if len(str(system.content)) + len(prompt) > PROMPT_CHAR_LIMIT:
+            return {"draft": AnswerDraft(answer=CONTEXT_LIMIT_TEXT, refused=True)}
         try:
-            answer = await structured_model.ainvoke(
-                [system_message(AGENT_PROMPT, history_text), HumanMessage(content=prompt)]
+            draft = await structured_answer.ainvoke(
+                [system, HumanMessage(content=prompt)]
             )
-            if isinstance(answer, str):
-                answer = AgentAnswer.model_validate_json(answer)
-            elif isinstance(answer, dict):
-                answer = AgentAnswer.model_validate(answer)
-            elif not isinstance(answer, AgentAnswer):
-                raise TypeError(f"модель вернула {type(answer).__name__}, а не AgentAnswer")
+            if isinstance(draft, str):
+                draft = AnswerDraft.model_validate_json(draft)
+            elif isinstance(draft, dict):
+                draft = AnswerDraft.model_validate(draft)
+            elif not isinstance(draft, AnswerDraft):
+                raise TypeError(f"модель вернула {type(draft).__name__}, а не AnswerDraft")
         except (OutputParserException, ValueError, TypeError) as e:
             reason = f"Не удалось разобрать ответ модели: {str(e)[:1000]}"
-            return {"answer": None, "reasons": [reason], "attempts": state["attempts"] + 1}
-        return {"answer": answer, "reasons": [], "attempts": state["attempts"] + 1}
+            return {"draft": None, "reasons": [reason]}
+        return {"draft": draft}
+
+    async def claims_node(state: AgentState) -> dict[str, Any]:
+        draft = state["draft"]
+        if draft is None:
+            return {"claims": [], "reasons": ["ответ не сформирован"]}
+        if draft.refused or draft.requires_confirmation:
+            return {"claims": [], "reasons": [], "claims_error": None}
+
+        await emit_event(on_event, "Готовлю подтверждения…")
+        attempts = state["claims_attempts"] + 1
+        history_text = build_history_text(state["history"])
+        current_evidence = {
+            key: value for key, value in state["evidence"].items() if key not in state["history_ids"]
+        }
+        system = system_message(CORE_RULES, history_text)
+        prompt = CLAIMS_TASK.format(
+            question=state["question"],
+            evidence=json.dumps(current_evidence, ensure_ascii=False, indent=2, sort_keys=True, default=str),
+            answer=draft.answer,
+            reasons=fmt_reasons(state["reasons"]),
+        )
+        if len(str(system.content)) + len(prompt) > PROMPT_CHAR_LIMIT:
+            return {
+                "claims": [],
+                "claims_error": "не хватило контекста для проверки claims",
+                "claims_attempts": attempts,
+            }
+        try:
+            claims_obj = await structured_claims.ainvoke(
+                [system, HumanMessage(content=prompt)]
+            )
+            if isinstance(claims_obj, str):
+                claims_obj = ClaimList.model_validate_json(claims_obj)
+            elif isinstance(claims_obj, dict):
+                claims_obj = ClaimList.model_validate(claims_obj)
+            elif not isinstance(claims_obj, ClaimList):
+                raise TypeError(f"модель вернула {type(claims_obj).__name__}, а не ClaimList")
+        except (OutputParserException, ValueError, TypeError) as e:
+            reason = f"Не удалось разобрать claims: {str(e)[:1000]}"
+            return {"claims": [], "reasons": [reason], "claims_attempts": attempts}
+        return {
+            "claims": claims_obj.claims,
+            "reasons": [],
+            "claims_error": None,
+            "claims_attempts": attempts,
+        }
 
     async def validate_node(state: AgentState) -> dict[str, Any]:
         await emit_event(on_event, "Проверяю ответ…")
-        if state["answer"] is None:
+        draft = state["draft"]
+        if draft is None:
             verdict = Verdict(ok=False, reasons=state["reasons"] or ["ответ модели не удалось разобрать"])
             return {"verdict": verdict, "reasons": verdict.reasons, "final": ""}
-        verdict = validate(state["answer"], state["evidence"])
+
+        answer = AgentAnswer(
+            answer=draft.answer,
+            claims=state["claims"],
+            refused=draft.refused,
+            requires_confirmation=draft.requires_confirmation,
+        )
+        if state["claims_error"]:
+            verdict = Verdict(ok=False, reasons=[state["claims_error"]])
+            return {
+                "answer": answer,
+                "verdict": verdict,
+                "reasons": verdict.reasons,
+                "final": draft.answer,
+            }
+        if state["reasons"]:
+            verdict = Verdict(ok=False, reasons=state["reasons"])
+            return {
+                "answer": answer,
+                "verdict": verdict,
+                "reasons": verdict.reasons,
+                "final": draft.answer,
+            }
+
+        verdict = validate(answer, state["evidence"])
         if verdict.ok:
-            return {"verdict": verdict, "reasons": [], "final": state["answer"].answer}
-        return {"verdict": verdict, "reasons": verdict.reasons}
+            return {
+                "answer": answer,
+                "verdict": verdict,
+                "reasons": [],
+                "final": draft.answer,
+            }
+        return {
+            "answer": answer,
+            "verdict": verdict,
+            "reasons": verdict.reasons,
+            "final": draft.answer,
+        }
 
     def fail_node(state: AgentState) -> dict[str, Any]:
         previews = [
@@ -489,9 +581,30 @@ def build_graph(model: ChatOpenAI, tools: list[StructuredTool], on_event: EventC
             )
             return {
                 "answer": answer,
+                "claims": [],
                 "verdict": Verdict(ok=True, reasons=[]),
                 "reasons": [],
                 "final": answer.answer,
+            }
+
+        draft = state["draft"]
+        if draft is not None:
+            answer = AgentAnswer(
+                answer=draft.answer,
+                claims=[],
+                refused=draft.refused,
+                requires_confirmation=draft.requires_confirmation,
+            )
+            fallback = state["reasons"] or ["ответ не прошёл проверку"]
+            verdict = state["verdict"] or Verdict(ok=False, reasons=fallback)
+            if verdict.ok:
+                verdict = Verdict(ok=False, reasons=fallback)
+            return {
+                "answer": answer,
+                "claims": [],
+                "verdict": verdict,
+                "reasons": verdict.reasons,
+                "final": draft.answer,
             }
 
         if state["answer"] is not None:
@@ -504,7 +617,12 @@ def build_graph(model: ChatOpenAI, tools: list[StructuredTool], on_event: EventC
             }
 
         answer = fail_safe_answer()
-        return {"answer": answer, "verdict": Verdict(ok=False, reasons=[]), "final": answer.answer}
+        return {
+            "answer": answer,
+            "claims": [],
+            "verdict": Verdict(ok=False, reasons=state["reasons"]),
+            "final": answer.answer,
+        }
 
     def route_agent(state: AgentState) -> str:
         last = state["messages"][-1]
@@ -512,26 +630,41 @@ def build_graph(model: ChatOpenAI, tools: list[StructuredTool], on_event: EventC
             return "tools"
         return "answer"
 
+    def route_answer(state: AgentState) -> str:
+        return "fail" if state["draft"] is None else "claims"
+
     def route_validate(state: AgentState) -> str:
         verdict = state["verdict"]
         if verdict is not None and verdict.ok:
             return "end"
-        if state["attempts"] < MAX_ATTEMPTS:
-            return "answer"
+        if state["claims_error"]:
+            return "fail"
+        if state["draft"] is not None and (
+            state["draft"].refused or state["draft"].requires_confirmation
+        ):
+            return "fail"
+        if state["claims_attempts"] < MAX_CLAIMS_ATTEMPTS:
+            return "claims"
         return "fail"
 
     graph = StateGraph(AgentState)
     graph.add_node("agent", agent_node)
     graph.add_node("tools", tools_node)
     graph.add_node("answer", answer_node)
+    graph.add_node("claims", claims_node)
     graph.add_node("validate", validate_node)
     graph.add_node("fail", fail_node)
 
     graph.add_edge(START, "agent")
     graph.add_conditional_edges("agent", route_agent, {"tools": "tools", "answer": "answer"})
     graph.add_edge("tools", "agent")
-    graph.add_edge("answer", "validate")
-    graph.add_conditional_edges("validate", route_validate, {"answer": "answer", "fail": "fail", "end": END})
+    graph.add_conditional_edges(
+        "answer", route_answer, {"claims": "claims", "fail": "fail"}
+    )
+    graph.add_edge("claims", "validate")
+    graph.add_conditional_edges(
+        "validate", route_validate, {"claims": "claims", "fail": "fail", "end": END}
+    )
     graph.add_edge("fail", END)
     return graph.compile()
 
@@ -569,6 +702,7 @@ async def run_agent(
         "answer": result["answer"].model_dump(mode="json") if result["answer"] else None,
         "verdict": result["verdict"].model_dump() if result["verdict"] else None,
         "reasons": result["reasons"],
-        "attempts": result["attempts"],
+        "attempts": result["claims_attempts"] + 1,
+        "claims_attempts": result["claims_attempts"],
         "steps": result["steps"],
     }

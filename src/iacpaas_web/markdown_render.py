@@ -112,7 +112,9 @@ def normalize_markdown(text: str) -> str:
     fenced = False
     for line in text.splitlines():
         stripped = line.lstrip()
-        if stripped.startswith("```"):
+        if not stripped:
+            lines.append(line)
+        elif stripped.startswith("```"):
             fenced = not fenced
             lines.append(line)
         elif fenced:

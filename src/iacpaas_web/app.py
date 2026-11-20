@@ -185,6 +185,13 @@ async def chat_stream(request: ChatRequest, http_request: Request) -> StreamingR
         queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
 
         async def emit(event: dict[str, Any]) -> None:
+            if event.get("type") == "answer":
+                event = dict(event)
+                answer = event.get("answer")
+                text = answer.get("answer") if isinstance(answer, dict) else None
+                if not isinstance(text, str) or not text:
+                    text = event.get("final")
+                event["answer_html"] = render_markdown(text if isinstance(text, str) else "")
             await queue.put(event)
 
         async def work() -> None:

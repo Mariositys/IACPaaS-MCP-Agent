@@ -9,6 +9,7 @@ const newChat = document.getElementById("new-chat");
 const callRegistry = new Map();
 let currentDialogueId = null;
 let sending = false;
+let checking = false;
 let abortController = null;
 
 function h(tag, className, text) {
@@ -140,6 +141,13 @@ function updateSendState() {
   send.disabled = !input.value.trim();
 }
 
+function setChecking(value) {
+  checking = value;
+  input.disabled = value;
+  newChat.disabled = value || sending;
+  updateSendState();
+}
+
 function stopAgent() {
   if (!sending || !abortController) return;
   abortController.abort();
@@ -163,6 +171,8 @@ function callErrorKind(data) {
 }
 
 function badge(data) {
+  if (data.partial) return ["Ответ проверяется", "badge-yellow"];
+  if (data.stopped) return ["Не подтверждено", "badge-red"];
   const hasPreview = operationPreviews(data.calls).length > 0;
   if (data.answer && data.answer.requires_confirmation && hasPreview) {
     return ["Нужно подтверждение", "badge-yellow"];
@@ -196,7 +206,7 @@ function addLoading() {
   const row = h("div", "row agent");
   const bubble = h("div", "bubble");
   const line = h("div", "answer-text");
-  const status = h("span", "loading-status", "Собираю данные и проверяю ответ…");
+  const status = h("span", "loading-status", "Собираю данные…");
   line.append(h("span", "spinner"), status);
   bubble.append(line);
   row.append(bubble);
@@ -441,6 +451,7 @@ function renderClaims(claims, calls) {
   const callCount = allCallIds.size;
   const factCount = claims.length;
   const details = h("details", "sources");
+  details.open = false;
   details.append(
     h(
       "summary",
@@ -647,42 +658,74 @@ function renderAnswer(data, animate = false) {
   const row = h("div", "row agent");
   const bubble = h("div", "bubble");
   const head = h("div", "bubble-head");
-  const [label, className] = badge(data);
-  head.append(h("span", `badge ${className}`, label));
-  bubble.append(head);
-
-  const answer = data.answer || {};
   const answerNode = h("div");
+  const extra = h("div", "answer-extra");
+  const state = { data };
+  let renderedData = null;
+  let dotsTimer = null;
+
+  const updateHead = () => {
+    if (dotsTimer) {
+      clearInterval(dotsTimer);
+      dotsTimer = null;
+    }
+    const [label, className] = badge(state.data);
+    const badgeNode = h("span", `badge ${className}`, label);
+    if (state.data?.partial) {
+      const dots = h("span", "checking-dots", ".");
+      badgeNode.append(dots);
+      let count = 1;
+      dotsTimer = setInterval(() => {
+        count = (count % 3) + 1;
+        dots.textContent = ".".repeat(count);
+      }, 400);
+    }
+    head.replaceChildren(badgeNode);
+  };
+
+  updateHead();
+  bubble.append(head);
   setAnswer(answerNode, data);
-  bubble.append(answerNode);
+  bubble.append(answerNode, extra);
 
   const appendSources = () => {
-    for (const call of operationPreviews(data.calls)) {
-      const card = renderOperationCard(call, data);
-      bubble.append(card);
+    const current = state.data || {};
+    if (renderedData === current) return;
+    renderedData = current;
+    extra.replaceChildren();
+    const answer = current.answer || {};
+    for (const call of operationPreviews(current.calls)) {
+      const card = renderOperationCard(call, current);
+      extra.append(card);
       if (call.status && call.status !== "pending") updateAnswerBadge(card, call.status);
     }
     if (answer.claims && answer.claims.length) {
-      bubble.append(renderClaims(answer.claims, data.calls));
+      extra.append(renderClaims(answer.claims, current.calls));
     }
-    const hasPreview = operationPreviews(data.calls).length > 0;
+    const hasPreview = operationPreviews(current.calls).length > 0;
     const hideReasons = answer.requires_confirmation && hasPreview;
-    if (data.verdict && !data.verdict.ok && data.verdict.reasons && data.verdict.reasons.length && !hideReasons) {
+    if (current.verdict && !current.verdict.ok && current.verdict.reasons && current.verdict.reasons.length && !hideReasons) {
       const reasons = h("div", "claim");
       reasons.append(h("div", "claim-statement", "Причины отказа валидатора"));
-      for (const reason of data.verdict.reasons) {
+      for (const reason of current.verdict.reasons) {
         reasons.append(h("div", "claim-meta", reason));
       }
-      bubble.append(reasons);
-    } else if (data.reasons && data.reasons.length && !hideReasons) {
+      extra.append(reasons);
+    } else if (current.reasons && current.reasons.length && !hideReasons) {
       const reasons = h("div", "claim");
       reasons.append(h("div", "claim-statement", "Почему ответ не подтверждён"));
-      for (const reason of data.reasons) {
+      for (const reason of current.reasons) {
         reasons.append(h("div", "claim-meta", reason));
       }
-      bubble.append(reasons);
+      extra.append(reasons);
     }
     scrollDown();
+  };
+
+  row._updateAnswer = (nextData) => {
+    state.data = nextData;
+    updateHead();
+    appendSources();
   };
 
   row.append(bubble);
@@ -757,6 +800,7 @@ async function openDialogue(dialogueId) {
 }
 
 function openNewChat() {
+  if (sending) return;
   currentDialogueId = null;
   callRegistry.clear();
   localStorage.removeItem("iacpaas_dialogue");
@@ -774,10 +818,13 @@ async function ask(question) {
   input.value = "";
   resizeInput();
   sending = true;
+  checking = false;
   abortController = new AbortController();
   updateSendState();
   newChat.disabled = true;
   const loading = addLoading();
+  let answerRow = null;
+  let partialAnswer = null;
 
   try {
     const response = await fetch("/api/chat/stream", {
@@ -821,7 +868,15 @@ async function ask(question) {
             event = null;
           }
           if (event && event.type === "status") {
-            loading.status.textContent = event.message;
+            if (!checking) loading.status.textContent = event.message;
+          } else if (event && event.type === "answer") {
+            setChecking(true);
+            if (loading.row.isConnected) loading.row.remove();
+            if (answerRow) answerRow.remove();
+            partialAnswer = event;
+            answerRow = renderAnswer(event, true);
+            messages.append(answerRow);
+            scrollDown();
           } else if (event && event.type === "final") {
             finalData = event.result;
           } else if (event && event.type === "error") {
@@ -834,26 +889,37 @@ async function ask(question) {
 
     loading.row.remove();
     if (streamError) {
+      if (answerRow && partialAnswer) answerRow._updateAnswer({ ...partialAnswer, partial: false });
       addError(streamError.error || "Ошибка сервера", streamError.kind);
     } else if (!finalData) {
+      if (answerRow && partialAnswer) answerRow._updateAnswer({ ...partialAnswer, partial: false });
       addError("Сервер не вернул итоговый ответ", "platform");
     } else {
       currentDialogueId = finalData.dialogue_id;
       localStorage.setItem("iacpaas_dialogue", currentDialogueId);
       registerCalls(finalData.calls);
-      messages.append(renderAnswer(finalData, true));
+      if (answerRow) {
+        answerRow._updateAnswer(finalData);
+      } else {
+        messages.append(renderAnswer(finalData, true));
+      }
       loadDialogues();
       scrollDown();
     }
   } catch (error) {
     loading.row.remove();
     if (error.name === "AbortError") {
-      addStopped();
+      if (answerRow && partialAnswer) {
+        answerRow._updateAnswer({ ...partialAnswer, partial: false, stopped: true });
+      } else {
+        addStopped();
+      }
     } else {
       addError(`Сеть: ${error.message}`, "platform");
     }
   } finally {
     abortController = null;
+    setChecking(false);
     sending = false;
     newChat.disabled = false;
     updateSendState();

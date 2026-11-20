@@ -401,6 +401,17 @@ def build_graph(model: ChatOpenAI, tools: list[StructuredTool], on_event: EventC
             return ""
         return "Предыдущая проверка не прошла:\n" + "\n".join(f"- {item}" for item in items)
 
+    async def emit_answer(draft: AnswerDraft) -> None:
+        if on_event is not None:
+            await on_event(
+                {
+                    "type": "answer",
+                    "answer": draft.model_dump(mode="json"),
+                    "final": draft.answer,
+                    "partial": True,
+                }
+            )
+
     async def agent_node(state: AgentState) -> dict[str, Any]:
         await emit_event(
             on_event,
@@ -467,6 +478,7 @@ def build_graph(model: ChatOpenAI, tools: list[StructuredTool], on_event: EventC
         except (OutputParserException, ValueError, TypeError) as e:
             reason = f"Не удалось разобрать ответ модели: {str(e)[:1000]}"
             return {"draft": None, "reasons": [reason]}
+        await emit_answer(draft)
         return {"draft": draft}
 
     async def claims_node(state: AgentState) -> dict[str, Any]:

@@ -56,7 +56,7 @@ async def _run(question: str) -> None:
             print(event["message"], file=sys.stderr, flush=True)
 
     if not ALLOW_WRITE:
-        result = await run_agent(question, read_only=True, on_event=emit)
+        result = await run_agent(question, read_only=True, on_event=emit, answer_format="plain")
         print(result["final"])
         return
 
@@ -69,6 +69,7 @@ async def _run(question: str) -> None:
             allow_preview=True,
             runtime=runtime,
             on_event=emit,
+            answer_format="plain",
         )
         print(result["final"])
         pending = _pending_preview(result["calls"])

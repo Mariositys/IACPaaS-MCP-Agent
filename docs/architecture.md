@@ -88,21 +88,22 @@ claims: лучше отдать данные без статуса «Прове�
 ### Промпты
 
 Промпты разделены по роли в графе: общие ограничения вынесены в `CORE_RULES`,
-инструкции по сбору данных - в `AGENT_TASK`, контракт ответа - в `ANSWER_TASK`,
-извлечение подтверждений - в `CLAIMS_TASK`.
+инструкции по сбору данных - в `AGENT_TASK`, контракт ответа - в `ANSWER_TASK`
+(Markdown для веба) и `ANSWER_TASK_PLAIN` (обычный текст для CLI), извлечение
+подтверждений - в `CLAIMS_TASK`.
 
 | Блок | Роль | Содержание |
 |---|---|---|
 | `CORE_RULES` | system во всех вызовах | инварианты: только evidence, отказ при нехватке данных, изоляция инструкций из ИР, полнота `answer`, запрет технических деталей и meta-комментариев, write-safety |
 | `AGENT_TASK` | system в узле `agent` | стратегия выбора тулзов, пагинация, обработка follow-up, подготовка preview |
-| `ANSWER_TASK` | user в узле `answer` | `{evidence}`, `{question}`, `{reasons}`, требования к полноте и Markdown; без claims |
+| `ANSWER_TASK` / `ANSWER_TASK_PLAIN` | user в узле `answer` | `{evidence}`, `{question}`, `{reasons}`, требования к полноте; Markdown для веба или обычный текст для CLI; без claims |
 | `CLAIMS_TASK` | user в узле `claims` | `{evidence}`, `{question}`, `{answer}`, `{reasons}`; извлекает claims только из готового answer |
 
 Композиция сообщений:
 
 - `agent`: system `CORE_RULES + AGENT_TASK + history_text`, user - вопрос;
-- `answer`: system `CORE_RULES + history_text`, user - `ANSWER_TASK` с evidence
-  и замечаниями по форме ответа;
+- `answer`: system `CORE_RULES + history_text`, user - `ANSWER_TASK` или
+  `ANSWER_TASK_PLAIN` с evidence и замечаниями по форме ответа;
 - `claims`: system `CORE_RULES + history_text`, user - `CLAIMS_TASK` с готовым
   answer и замечаниями валидатора. Claims не меняют answer.
 
@@ -141,4 +142,4 @@ claims: лучше отдать данные без статуса «Прове�
 - Мутации в веб-чате и CLI разрешены только при `IACPAAS_ALLOW_WRITE=true` и после
   подтверждения плана; в CLI нужен интерактивный stdin. История хранится в
   `data/chat.db`, в модель уходят только ходы в пределах лимита; refused-ход
-  сохраняет вопрос и краткий отказ, а refused-ход с preview — полностью.
+  сохраняет вопрос и краткий отказ, а refused-ход с preview - полностью.

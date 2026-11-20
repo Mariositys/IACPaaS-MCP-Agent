@@ -31,7 +31,7 @@ class AgentAnswer(BaseModel):
 
 
 class AnswerDraft(BaseModel):
-    answer: str = Field(min_length=1, description="Полный Markdown-ответ пользователю")
+    answer: str = Field(min_length=1, description="Полный ответ пользователю в формате, заданном промптом")
     refused: bool = Field(False, description="True, если данных для ответа не хватило")
     requires_confirmation: bool = Field(
         False,

@@ -5,7 +5,7 @@ import sys
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from pathlib import Path
-from typing import Annotated, Any, TypedDict
+from typing import Annotated, Any, Literal, TypedDict
 
 from dotenv import load_dotenv
 from fastmcp import Client
@@ -17,7 +17,7 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 
-from .prompts import AGENT_TASK, ANSWER_TASK, CLAIMS_TASK, CORE_RULES
+from .prompts import AGENT_TASK, ANSWER_TASK, ANSWER_TASK_PLAIN, CLAIMS_TASK, CORE_RULES
 from .schemas import AgentAnswer, AnswerDraft, Claim, ClaimList
 from .validator import Verdict, fail_safe_answer, validate
 
@@ -60,6 +60,7 @@ AGENT_INTERNAL_TOOLS = {
 }
 WRITE_TOOLS = {"preview_import", "preview_update", "preview_delete"}
 EventCallback = Callable[[dict[str, Any]], Awaitable[None]]
+AnswerFormat = Literal["markdown", "plain"]
 TOOL_STATUS = {
     "list_inforesources": "Ищу ресурсы в каталоге…",
     "get_inforesource": "Читаю инфоресурс…",
@@ -390,10 +391,16 @@ async def emit_event(on_event: EventCallback | None, message: str, **extra: Any)
         await on_event({"type": "status", "message": message, **extra})
 
 
-def build_graph(model: ChatOpenAI, tools: list[StructuredTool], on_event: EventCallback | None = None):
+def build_graph(
+    model: ChatOpenAI,
+    tools: list[StructuredTool],
+    on_event: EventCallback | None = None,
+    answer_format: AnswerFormat = "markdown",
+):
     model_with_tools = model.bind_tools(tools)
     structured_answer = model.with_structured_output(AnswerDraft)
     structured_claims = model.with_structured_output(ClaimList)
+    answer_task = ANSWER_TASK if answer_format == "markdown" else ANSWER_TASK_PLAIN
     tool_map = {tool.name: tool for tool in tools}
 
     def fmt_reasons(items: list[str]) -> str:
@@ -458,7 +465,7 @@ def build_graph(model: ChatOpenAI, tools: list[StructuredTool], on_event: EventC
             key: value for key, value in state["evidence"].items() if key not in state["history_ids"]
         }
         system = system_message(CORE_RULES, history_text)
-        prompt = ANSWER_TASK.format(
+        prompt = answer_task.format(
             question=state["question"],
             evidence=json.dumps(current_evidence, ensure_ascii=False, indent=2, sort_keys=True, default=str),
             reasons=fmt_reasons(state["reasons"]),
@@ -688,6 +695,7 @@ async def run_agent(
     history: list[dict[str, Any]] | None = None,
     runtime: AgentRuntime | None = None,
     on_event: EventCallback | None = None,
+    answer_format: AnswerFormat = "markdown",
 ) -> dict[str, Any]:
     history_evidence, history_text, fits = prepare_history(history)
     if not fits:
@@ -695,7 +703,7 @@ async def run_agent(
 
     if runtime is not None:
         tools = await runtime.tools(read_only, allow_preview=allow_preview)
-        graph = build_graph(make_model(), tools, on_event)
+        graph = build_graph(make_model(), tools, on_event, answer_format=answer_format)
         state = initial_state(question, history_text, history_evidence)
         result = await graph.ainvoke(state)
     else:
@@ -704,7 +712,7 @@ async def run_agent(
             tools = await load_tools(
                 mcp_client, read_only=read_only, allow_preview=allow_preview
             )
-            graph = build_graph(make_model(), tools, on_event)
+            graph = build_graph(make_model(), tools, on_event, answer_format=answer_format)
             state = initial_state(question, history_text, history_evidence)
             result = await graph.ainvoke(state)
     return {
